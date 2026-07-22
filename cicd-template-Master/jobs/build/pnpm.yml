@@ -1,0 +1,15 @@
+
+.build:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:1.0.0
+  variables:
+    BUILD_FOLDER: "change_me"
+    ARTIFACT_FOLDER: "change_me"
+  script:
+    - cd $BUILD_FOLDER && npm -v
+    - |
+      echo "Building project using npm command: npm build"
+    - npm build
+  artifacts:
+    paths:
+    - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/"
+

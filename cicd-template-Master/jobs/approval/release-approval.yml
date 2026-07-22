@@ -1,0 +1,15 @@
+# here, we get release informations from an artifact file release_variables.txt
+# currently, it's passed by a job in .pre stage
+.approval:
+  allow_failure: false
+  script:
+    - source release_variables.txt
+    - echo "Pipeline trigger by:$GITLAB_USER_EMAIL"
+    - echo "Release Manager:$RELEASE_MANAGER"
+    - |
+      if [ "$GITLAB_USER_EMAIL" = "$RELEASE_MANAGER" ]; then
+        echo "Fail: RELEASE_MANAGER should not run this job"
+        exit 1
+      else
+        echo "Pass: Job approved by second person, $GITLAB_USER_EMAIL"
+      fi

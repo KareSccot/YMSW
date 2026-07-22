@@ -1,0 +1,16 @@
+
+.build:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk21_with_gradle_mvn:1.0.0
+  variables:
+    BUILD_FOLDER: "change_me"
+    ARTIFACT_FOLDER: "change_me"
+    GRADLE_BUILD_OPTS: "clean build"
+  script:
+    - ./gradlew -v
+    - |
+      echo "Building project using gradle command: ./gradlew $GRADLE_BUILD_OPTS"
+    - ./gradlew $GRADLE_BUILD_OPTS
+  artifacts:
+    paths:
+    - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/*.jar"
+

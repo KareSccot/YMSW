@@ -1,0 +1,16 @@
+.appsec_approval:
+  script:
+    - echo "Approvers:$APPSECURITY_APPROVERS"
+    - echo "Triggered by:$GITLAB_USER_EMAIL"
+    # Check approval
+    - |
+      APPROVER_LIST=$(echo $APPSECURITY_APPROVERS | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+      for approver in $(echo $APPROVER_LIST | tr ',' ' ' ); do
+        user_email=$(echo $GITLAB_USER_EMAIL |tr '[:upper:]' '[:lower:]')
+        if [ "$user_email" == "$approver" ]; then
+          echo "User $GITLAB_USER_EMAIL is an approver.";
+          exit 0
+        fi
+      done
+    - echo "User $GITLAB_USER_EMAIL is NOT an approver, please reach out to App Security team for review and approval."
+    - exit 1

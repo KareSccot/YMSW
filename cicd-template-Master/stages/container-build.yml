@@ -1,0 +1,13 @@
+include:
+  - local: jobs/build/docker.yml
+  - local: rules/dev-fix-rules.yml
+
+build-container:
+  stage: build
+  needs:
+    - job: build-app
+      optional: true
+  when: on_success
+  extends:
+    - .build-docker
+    - .default_dev_fix_docker_rules

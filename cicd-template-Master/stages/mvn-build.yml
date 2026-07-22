@@ -1,0 +1,9 @@
+include:
+  - local: jobs/build/mvn.yml
+  - local: rules/dev-fix-rules.yml
+
+build-app:
+  stage: build
+  extends:
+    - .default_dev_fix_rules
+    - .mvn_build

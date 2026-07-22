@@ -1,0 +1,37 @@
+include:
+  - local: jobs/deploy/argo-rolling.yml
+  - local: rules/dev-fix-rules.yml
+  - local: rules/uat-rules.yml
+  - local: rules/release-rules.yml
+
+deploy-dev:
+  variables:
+    ENV: dev
+  stage: deploy-dev
+  when: manual
+  extends:
+    - .deploy
+    - .default_dev_fix_rules
+  needs: 
+    - build-container
+
+deploy-uat:
+  variables:
+    ENV: uat
+  stage: deploy-uat
+  when: manual
+  extends:
+    - .deploy
+    - .default_uat_rules
+  needs: 
+    - build-container
+
+deploy-prod:
+  variables:
+    ENV: prod
+  stage: deploy-prod
+  when: manual
+  allow_failure: false
+  extends:
+    - .deploy
+    - .release_rules

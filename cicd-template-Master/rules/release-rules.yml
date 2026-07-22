@@ -1,0 +1,8 @@
+include:
+  - local: rules/branch-conditions.yml
+
+# for jobs only run in release pipeline, like deploy-prod
+.release_rules:
+  rules:
+    - !reference [.conditions_for_tags, rules]
+    - when: never

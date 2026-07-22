@@ -1,0 +1,48 @@
+.security-scan:
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      command: ["--registry-mirror", "https://mirror.ccs.tencentyun.com"]
+  before_script:
+    - docker info
+  artifacts:
+    paths:
+      - "${ARTIFACT_FOLDER}/*"
+  variables:
+    #system requirements
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_OPTS: "--dns=${WUXI_DNS}"
+    SOURCECODE_PATH: "."
+    SECSCAN_REGISTRY_IMAGE: "${DOCKER_REGISTRY}/devops/${SECURITY_SCAN_IMAGE_NAME}"
+    ARTIFACT_FOLDER: './security-scan-results'
+    Has_SCA: "0"
+    Has_SAST: "0"
+    Has_ThreatModel: "0"
+
+    # GitLab default variables mapping
+    APP_NAME: "${CI_PROJECT_NAME}"
+    CODE_BRANCH: "${CI_COMMIT_BRANCH}"      # current code branch
+    CODE_COMMIT_HASH: "${CI_COMMIT_SHA}"    # current commit hash
+    CODE_COMMIT_USER: "${GITLAB_USER_EMAIL:-Manul_Trigger}"  # current commit user
+    PROJECT_PATH_SLUG: "${CI_PROJECT_PATH_SLUG}"  # current project path slug
+    TARGET_CODE_REPOSITORY_URL: "${CI_PROJECT_URL}"  # current code repo url    
+    DEBUGGING_TIME: "5s"
+    
+
+
+  script:
+    - if [ ! -z "${SAST_PROJECT_ID}" ] && [ ! -z "${SAST_APP_ID}" ]; then echo "SAST scan is enabled"; fi
+    - if [ "$Has_SCA" = "1" ]; then echo "SCA scan is enabled"; fi
+    - if [ ! -z "${TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL}" ]; then echo "Docker scan is enabled"; fi
+
+    - echo "$REGISTRY_PASSWORD" | docker login $DOCKER_REGISTRY --username "$REGISTRY_USER" --password-stdin
+    - echo "Pulling image ${SECSCAN_REGISTRY_IMAGE}:${SECURITY_SCAN_IMAGE_VERSION}..."
+    - docker pull "${SECSCAN_REGISTRY_IMAGE}":"${SECURITY_SCAN_IMAGE_VERSION}"
+    - if [ ! -z "${TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL}" ]; then echo "Pulling docker target image ${TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL}..."; docker pull "${TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL}"; fi
+    - CONTAINER_NAME="SecurityScan-${APP_NAME}-${CI_PIPELINE_IID}"
+    - echo "WUXI_DNS:${WUXI_DNS}"
+    - mkdir -p ${ARTIFACT_FOLDER} && chmod 777 ${ARTIFACT_FOLDER}
+    - DOCKER_CMD="docker run --rm --name ${CONTAINER_NAME} --dns ${WUXI_DNS} -v ${SOURCECODE_PATH}:/app/src -v ${SOURCECODE_PATH}/${ARTIFACT_FOLDER}:/app/${ARTIFACT_FOLDER} -e Scan_Report_Folder=${ARTIFACT_FOLDER} -e Has_SAST=${Has_SAST} -e SAST_ProjectId=${SAST_PROJECT_ID} -e SAST_AppId=${SAST_APP_ID} -e SAST_ScanTimeout=${SECURITY_SAST_SCAN_TIMEOUT:-\"3600\"} -e Has_SCA=${Has_SCA} -e SCA_ProjectToken=${SCA_PROJECT_TOKEN} -e Has_ThreatModel=${Has_ThreatModel} -e AppName=${APP_NAME} -e BuildNo=${CI_PIPELINE_IID} -e Enableblock=${SECURITY_ENABLE_BLOCK} -e Code_Branch=${CODE_BRANCH} -e Project_Path_Slug=${PROJECT_PATH_SLUG} -e Code_Commit_Hash=${CODE_COMMIT_HASH} -e Code_Commit_User=${GITLAB_USER_EMAIL:-Manul_Trigger} -e Tenable_Code_Repository_URL=${TARGET_CODE_REPOSITORY_URL} -e Tenable_ScanTarget_Docker_Repository_URL=${TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL} -e Pipeline_URL=${CI_PIPELINE_URL} -v /var/run/docker.sock:/var/run/docker.sock --group-add 0 ${SECSCAN_REGISTRY_IMAGE}:${SECURITY_SCAN_IMAGE_VERSION}"
+    - echo "Exec:${DOCKER_CMD}"
+    - eval "${DOCKER_CMD}"

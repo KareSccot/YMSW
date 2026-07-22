@@ -1,0 +1,11 @@
+
+include:
+  - local: jobs/build/pnpm.yml
+  - local: rules/dev-fix-rules.yml
+
+build-app:
+  stage: build
+  when: on_success
+  extends:
+    - .default_dev_fix_rules
+    - .pnpm_build

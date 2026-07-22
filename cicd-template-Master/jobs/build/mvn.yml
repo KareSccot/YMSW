@@ -1,0 +1,17 @@
+
+.build:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk21_with_gradle_mvn:1.0.0
+  variables:
+    BUILD_ENV: "change_me"
+    MVN_OPTS: "-P${BUILD_ENV} -Dmaven.test.skip=true"
+  script:
+    - cd $BUILD_FOLDER
+    - |
+      echo "Building project using mvn command: mvn package -P${MVN_OPTS} -Dmaven.test.skip=true"
+    - mvn package ${MVN_OPTS} 
+    # MVN_OPTS is the parameters to use for maven build
+    # -P${ENV} is to specify profile
+    # -Dmaven.test.skip=true is to skip test
+  artifacts:
+    paths:
+    - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/*.jar"

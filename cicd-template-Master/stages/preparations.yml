@@ -1,0 +1,11 @@
+include:
+  - local: jobs/preparations/set-release-manager.yml
+  - local: rules/release-rules.yml
+
+set-release-manager:
+  stage: .pre
+  when: always
+  allow_failure: false
+  extends:
+    - .set_release_manager
+    - .release_rules
