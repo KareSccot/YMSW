@@ -1,0 +1,31 @@
+include:
+  - project: 'devops/cicd-template'
+    ref: Master
+    file:
+      - 'rules/branch-conditions.yml'
+      - 'jobs/build/docker.yml'
+
+default:
+  tags:
+    - tencent
+    - platform
+    - devops
+
+stages:
+  - build
+
+.build_container_common:
+  stage: build
+  when: manual
+  extends:
+    - .build-docker
+  rules:
+    - !reference [.conditions_for_branch_push, rules]
+    - !reference [.conditions_for_merge_requests, rules]
+    - !reference [.conditions_for_tags, rules]
+    - when: never
+  variables:
+    BEFORE_DEBUGGING_TIME: "10s"
+  before_script:
+    - sleep $BEFORE_DEBUGGING_TIME
+    - docker info

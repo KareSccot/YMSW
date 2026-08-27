@@ -1,0 +1,22 @@
+app:
+  name: dfx-frontend
+
+image:
+  namespace: atlas
+  repository: dfx-frontend
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: dfx-sciwriter-image-pull-secret
+
+pod:
+  port: 8080
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http

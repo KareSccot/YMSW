@@ -1,0 +1,11 @@
+apiVersion: v2
+
+name: opa-service
+
+description: OPA policy decision service (standalone chart, not derived from app-chart)
+
+type: application
+
+version: 0.1.0
+
+appVersion: "1.19.1"

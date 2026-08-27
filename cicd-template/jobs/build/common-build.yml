@@ -1,0 +1,5 @@
+.build:
+  image: ${BUILD_IMAGE}
+  script:
+    - echo "This is default build script on build image:${BUILD_IMAGE}."
+    - echo "Please overwrite your build script in .gitlab-ci.yml"

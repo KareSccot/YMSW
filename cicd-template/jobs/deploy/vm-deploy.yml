@@ -1,0 +1,71 @@
+.deploy_container:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/alpine3.20_openssh:master-134361
+  script:
+    - DEPLOY_KEY_PATH="/tmp/deploy_key_${CI_PIPELINE_ID}"
+    - DEPLOY_SSL_CERT="/tmp/ssl_cert_${CI_PIPELINE_ID}"
+    - DEPLOY_SSL_KEY="/tmp/ssl_key_${CI_PIPELINE_ID}"
+    # set target SSH private key, ssl cert, ssl key
+    - |
+      echo "${SSH_PRIVATE_KEY}" > "$DEPLOY_KEY_PATH"
+      echo "${SSL_CERT}" > "$DEPLOY_SSL_CERT"
+      echo "${SSL_KEY}" > "$DEPLOY_SSL_KEY"    
+      chmod 600 "$DEPLOY_KEY_PATH"
+      chmod 600 "$DEPLOY_SSL_CERT"
+      chmod 600 "$DEPLOY_SSL_KEY"
+
+      DEPLOY_TARGET="${SSH_USER}@${SSH_TARGET}"
+  
+      ssh -i "$DEPLOY_KEY_PATH" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${DEPLOY_TARGET}" "mkdir -p ${DEPLOY_PATH}"  
+      
+      # upload deploy files using private key
+      scp -P "${SSH_PORT}" -i "$DEPLOY_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${DOCKER_COMPOSE_FILE}" "${DEPLOY_TARGET}:${DEPLOY_PATH}/${DOCKER_COMPOSE_FILE}"
+      scp -P "${SSH_PORT}" -i "$DEPLOY_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$DEPLOY_SSL_CERT" "${DEPLOY_TARGET}:${DEPLOY_PATH}/server.crt"
+      scp -P "${SSH_PORT}" -i "$DEPLOY_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$DEPLOY_SSL_KEY" "${DEPLOY_TARGET}:${DEPLOY_PATH}/server.key"      
+   
+      export PREFIX="${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}/${SERVICE_NAME}"
+    
+     # execute remote deployment commands using private key
+    - |
+      #pass variables to remote
+      INJECT=""
+      for var in $(env | grep '^CUSTOM_' | cut -d= -f1); do
+        val=$(printenv "$var" | base64 | tr -d '\n')
+        INJECT="${INJECT}
+      export ${var}=\"\$(printf '%s' '${val}' | base64 -d)\""
+      done
+
+      ssh -i "$DEPLOY_KEY_PATH" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${DEPLOY_TARGET}" bash << EOF
+      set -Eeo pipefail
+
+      ${INJECT}
+
+      # switch to deployment directory (using part after colon)
+      cd "${DEPLOY_PATH}"
+
+      export IMAGE_REGISTRY="${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}"
+      export SERVICE_NAME="${SERVICE_NAME}"
+      export IMAGE_TAG="$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID"
+
+      # set docker_base_image
+      sudo docker login '${DOCKER_REGISTRY}' --username '${REGISTRY_USER}' --password '${REGISTRY_PASSWORD}'
+
+      # stop and remove existing containers and associated networks
+      echo "stopping all docker services..."
+      sudo -E docker compose --project-name "${CI_PROJECT_NAME}" down --volumes --remove-orphans
+      echo "removing previous images with prefix:${PREFIX}"
+      sudo docker image ls --filter "reference=${PREFIX}*" --format "{{.ID}}" | xargs -r sudo docker rmi
+
+      echo "starting dockers..."
+      sudo -E docker compose -f "${DOCKER_COMPOSE_FILE}" --project-name "${CI_PROJECT_NAME}" up -d --remove-orphans
+
+      # check dockers status
+      echo "checking dockers status..."
+      sudo -E docker compose -f "${DOCKER_COMPOSE_FILE}" --project-name "${CI_PROJECT_NAME}" ps
+      EOF
+    # clean up temporary files
+    - |
+      echo "Cleaning up temporary files..."
+      rm -f "$DEPLOY_KEY_PATH"
+      rm -f "$DEPLOY_SSL_CERT"
+      rm -f "$DEPLOY_SSL_KEY"
+      echo "Cleanup completed"

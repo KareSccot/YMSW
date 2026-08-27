@@ -1,0 +1,4 @@
+flask>=3.0
+PyJWT>=2.8
+requests
+gunicorn>=21.2

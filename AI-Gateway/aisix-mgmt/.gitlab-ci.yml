@@ -1,0 +1,4 @@
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/python
+    file: '/devops/backend-workflow.yml'

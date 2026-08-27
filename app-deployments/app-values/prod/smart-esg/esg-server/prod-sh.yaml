@@ -1,0 +1,17 @@
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - lnp00esg0103
+          - lnp00esg0104
+app:
+  env: prod
+env:
+  ESG_MAIL_WHITELIST_MODE: 0
+  SPRING_PROFILES_ACTIVE: ymsw
+image:
+  tag: 0-0-4-143077

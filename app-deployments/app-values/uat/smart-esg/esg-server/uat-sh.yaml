@@ -1,0 +1,11 @@
+app:
+  env: uat
+env:
+  ESG_MAIL_WHITELIST_MODE: 1
+  REDIS_HOST: 10.248.27.207
+  RESIS_PASSWORD: ENC(8PsyZiVI1Xl6bf1nTkoAwx+VP+ek5lsP)
+  SPRING_PROFILES_ACTIVE: uat
+image:
+  tag: release-141057
+service:
+  nodePort: 30090

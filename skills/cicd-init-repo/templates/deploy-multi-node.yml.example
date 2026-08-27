@@ -1,0 +1,121 @@
+# ci/deploy-nodes.yml —— 多节点 VM 部署（负载均衡），合规版
+#
+# 派生说明见 references/multi-node-deploy.md。要点：
+#   - 替换 team-cicd 单机部署层（deploy-container-* 已在根 .gitlab-ci.yml 禁用）
+#   - build / 安全扫描 / 审批等 job 全部保留 team-cicd 默认，不在此处碰
+#   - 每个节点：独立 compose + 独立 nginx.conf（与 PMS 一致）
+#   - 机密用通用 CUSTOM_ 注入循环透传（不逐条 export）
+#
+# /cicd-init-repo 按 cicd-services.yml 的 deploy: 段为每个 (env,node) 生成一对 job，
+# 占位符：
+#   <DEPLOY_IMAGE>   含 sh + apk 的 alpine 镜像（与 team-cicd deploy 类 job 同款；不确定就照搬 build 镜像所在 registry 的 alpine）
+#   <ENV>            环境名小写，如 uat / prod
+#   <NODE>           节点名小写，如 master / slave
+#   <DEPLOY_STAGE>   该环境的部署 stage：uat→deploy-uat，prod→deploy-prod（team-cicd 已声明这些 stage）
+#   <ENV_RULES>      触发规则（见每个 job 注释）
+#   <NODE_TARGET>    节点 target 变量名，如 PROD_MASTER_TARGET（值 = user@host:/path）
+#   <ENV_UPPER>      环境前缀，如 UAT / PROD
+#   <COMPOSE>        该节点 compose 文件，如 docker-compose-master.yml
+#   <NGINX_CONF>     该节点 nginx conf 仓库内路径，如 config/nginx/nginx-prod-master.conf
+#   <FRONTEND_BUILD_JOB> 产前端 dist 的 build job 名（nginx serve 前端时 -pre 用 needs 取 artifact）；无前端则删掉 needs
+
+# ============ base：上传 nginx.conf + SSL 到单个节点 ============
+.deploy-node-pre:
+  image: <DEPLOY_IMAGE>
+  script:
+    - sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
+    - apk add --no-cache openssh-client
+    - KEY="/tmp/deploy_key_${CI_PIPELINE_ID}"
+    - CERT="/tmp/ssl_cert_${CI_PIPELINE_ID}"
+    - SKEY="/tmp/ssl_key_${CI_PIPELINE_ID}"
+    - |
+      echo "${SSH_KEY}"  > "$KEY";  chmod 600 "$KEY"
+      echo "${SSL_CERT}" > "$CERT"; chmod 600 "$CERT"
+      echo "${SSL_KEY}"  > "$SKEY"; chmod 600 "$SKEY"
+      HOST="${DEPLOY_TARGET%:*}"
+      OPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+      ssh -i "$KEY" -p "${REMOTE_SSH_PORT:-22}" $OPT "$HOST" "mkdir -p ${DEPLOY_TARGET#*:}/frontend/nginx/ssl"
+      scp -P "${REMOTE_SSH_PORT:-22}" -i "$KEY" $OPT "${NGINX_CONF}" "${DEPLOY_TARGET}/frontend/nginx/nginx.conf"
+      scp -P "${REMOTE_SSH_PORT:-22}" -i "$KEY" $OPT "$CERT" "${DEPLOY_TARGET}/frontend/nginx/ssl/server.crt"
+      scp -P "${REMOTE_SSH_PORT:-22}" -i "$KEY" $OPT "$SKEY" "${DEPLOY_TARGET}/frontend/nginx/ssl/server.key"
+    - rm -f "$KEY" "$CERT" "$SKEY"
+
+# ============ base：上传 compose + 远端 docker compose up（单个节点）============
+.deploy-node:
+  image: <DEPLOY_IMAGE>
+  dependencies: []          # 部署不需要任何 build artifact，省下载时间
+  script:
+    - set -Eeuo pipefail
+    - sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
+    - apk add --no-cache openssh-client
+    - KEY="/tmp/deploy_key_${CI_PIPELINE_ID}"
+    - echo "${SSH_PRIVATE_KEY}" > "$KEY"; chmod 600 "$KEY"
+    - HOST="${DEPLOY_TARGET%:*}"
+    - OPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    - scp -P "${REMOTE_SSH_PORT:-22}" -i "$KEY" $OPT "${DOCKER_COMPOSE_FILE}" "${DEPLOY_TARGET}/${DOCKER_COMPOSE_FILE}"
+    - |
+      # 通用 CUSTOM_ 透传：所有 CUSTOM_ 开头的 CI 变量 base64 编码 → 远端解码导出
+      INJECT=""
+      for var in $(env | grep '^CUSTOM_' | cut -d= -f1); do
+        val=$(printenv "$var" | base64 | tr -d '\n')
+        INJECT="${INJECT}
+      export ${var}=\"\$(printf '%s' '${val}' | base64 -d)\""
+      done
+      ssh -i "$KEY" -p "${REMOTE_SSH_PORT:-22}" $OPT "$HOST" bash << EOF
+      set -Eeo pipefail
+      ${INJECT}
+      cd "${DEPLOY_TARGET#*:}"
+
+      export IMAGE_REGISTRY="${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}"
+      # ⚠️ IMAGE_TAG 必须与 build-container push 的 tag 一致（team-cicd 默认下面这个）
+      export IMAGE_TAG="\$CI_COMMIT_REF_SLUG-\$CI_PIPELINE_ID"
+
+      sudo docker login '${DOCKER_REGISTRY}' --username '${REGISTRY_USER}' --password '${REGISTRY_PASSWORD}'
+
+      echo "stopping services on this node..."
+      sudo -E docker compose -f "${DOCKER_COMPOSE_FILE}" --project-name "${CI_PROJECT_NAME}" down --volumes --remove-orphans
+
+      echo "starting services..."
+      sudo -E docker compose -f "${DOCKER_COMPOSE_FILE}" --project-name "${CI_PROJECT_NAME}" up -d --remove-orphans
+      sudo -E docker compose -f "${DOCKER_COMPOSE_FILE}" --project-name "${CI_PROJECT_NAME}" ps
+      EOF
+    - rm -f "$KEY"
+
+# ================================================================
+# ↓↓↓ 每个节点一对 job（按 cicd-services.yml deploy: 段复制）↓↓↓
+# 下面是一个 prod / master 节点的样例，照它给每个 (env,node) 各生成一对
+# ================================================================
+
+<ENV>-<NODE>-pre:
+  extends: .deploy-node-pre
+  stage: <DEPLOY_STAGE>
+  # rules 直接按环境写死填入 <ENV_RULES>，**不要**用 `- !reference [.release_rules, rules]` 再跟一行
+  # `- when: manual` 兜底 —— .release_rules 的 tag 匹配项默认 on_success，会让 prod 在 tag 上自动跑，
+  # manual 闸门失效。把 when 写在匹配规则本身上才可靠：
+  #   UAT：  rules: [{ if: '$CI_COMMIT_BRANCH == "uat" || $CI_COMMIT_BRANCH == "main"', when: on_success }, { when: never }]
+  #   PROD： rules: [{ if: '$CI_COMMIT_TAG', when: manual }, { when: never }]   # tag 触发 + 每台人工点
+  rules: <ENV_RULES>
+  variables:
+    REMOTE_SSH_PORT: "22"
+    NGINX_CONF: "<NGINX_CONF>"
+    SSL_CERT: "${<ENV_UPPER>_SSL_CERT}"
+    SSL_KEY: "${<ENV_UPPER>_SSL_KEY}"
+    SSH_KEY: "${<ENV_UPPER>_SSH_PRIVATE_KEY}"
+    DEPLOY_TARGET: "${<NODE_TARGET>}"
+  needs:
+    - <FRONTEND_BUILD_JOB>      # nginx 要 serve 前端 dist 时取 artifact；纯后端节点删掉整个 needs
+
+<ENV>-<NODE>:
+  extends: .deploy-node
+  stage: <DEPLOY_STAGE>
+  rules: <ENV_RULES>
+  variables:
+    REMOTE_SSH_PORT: "22"
+    DOCKER_COMPOSE_FILE: "<COMPOSE>"
+    DEPLOY_TARGET: "${<NODE_TARGET>}"
+    SSH_PRIVATE_KEY: "${<ENV_UPPER>_SSH_PRIVATE_KEY}"
+    # 应用机密全部走 GitLab CI/CD Variables 里的 CUSTOM_* —— 自动透传，无需在此列出
+  needs:
+    - <ENV>-<NODE>-pre
+  # PROD 节点的人工闸门靠 rules 里 `{ if: '$CI_COMMIT_TAG', when: manual }` 实现（见上），
+  # 逐台人工点，一台出问题不连累另一台。别在 job 顶层写 `when: manual` —— 有 rules 时它会被忽略。

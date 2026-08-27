@@ -1,0 +1,52 @@
+# OPA common values (env-agnostic skeleton)
+# Path: app-values/common/devops/opa/app-values.yaml
+# Team: devops (same group as aisix-mgmt)
+# OPA is a public Docker Hub image — no imagePullSecret (public registry).
+app:
+  name: opa
+
+replicaCount: 1
+
+image:
+  registry: docker.io
+  namespace: openpolicyagent
+  repository: opa
+  pullPolicy: IfNotPresent
+
+opa:
+  addr: "0.0.0.0:8181"
+
+# args: OPA needs run --server to start in server mode (entrypoint is just `opa`)
+args:
+  - "run"
+  - "--server"
+  - "--addr=0.0.0.0:8181"
+
+serviceAccount:
+  create: true
+  automount: false
+
+pod:
+  port: 8181
+
+service:
+  type: ClusterIP
+  port: 8181
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

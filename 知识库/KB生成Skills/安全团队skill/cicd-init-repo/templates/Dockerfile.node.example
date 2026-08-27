@@ -1,0 +1,39 @@
+# Node 项目 Dockerfile —— **简单单文件版本**（Node 后端服务用）
+#
+# 适用场景：
+#   - Node 后端服务（Express/NestJS 等），不是前端 SPA
+#   - 单 service / 不想搞 .gitlab-ci.yml 里的参数化
+#
+# 局限：
+#   - FROM 写死，运行时镜像升级要改这里
+#   - 前端 SPA 不要用这个，用 Dockerfile.frontend-nginx.parameterized.example
+#
+# 用 node 官方 slim 镜像 + 自己 useradd（base-image-builder 的 node 镜像是**编译用**，不适合作 FROM）。
+
+FROM node:20-slim
+
+# 国内源默认开（清华 apt / npmmirror），外网构建时覆盖为空字符串
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+      && sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
+    && npm ci --omit=dev
+
+COPY . .
+
+# 创建非 root 用户
+RUN useradd --create-home appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8080
+
+CMD ["node", "server.js"]

@@ -1,0 +1,36 @@
+
+
+.build-docker:
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      command: ["--registry-mirror", "https://mirror.ccs.tencentyun.com"]
+  before_script:
+    - sleep $BEFORE_DEBUGGING_TIME
+    - docker info
+  variables:
+    # system requirements
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    # build parameters
+    DOCKER_BUILD_PATH: "."
+    DOCKER_BUILD_ARGS: " "
+    DOCKERFILE_NAME: "./Dockerfile"
+    # SERVICE_REPOSITORY is the repository/namespace
+    SERVICE_REPOSITORY: "change_me"
+    # SERVICE_NAME is the identifier of the service, defined in workflows/app-workflow.yml
+    IMAGE_NAME: $SERVICE_NAME
+    CI_REGISTRY_IMAGE: "${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}/${IMAGE_NAME}"
+    IMAGE_TAG: $CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID
+    # DOCKER_REGISTRY is the registry where the image will be pushed, by default defined in gitlab instance level
+    # REGISTRY_USER is the username to login the registry, by default defined in gitlab instance level
+    # REGISTRY_PASSWORD is the username to login the registry, by default defined in gitlab instance level
+    DEBUGGING_TIME: "1s"
+    BEFORE_DEBUGGING_TIME: "1s"
+  script:
+    - cd $DOCKER_BUILD_PATH
+    - docker login $DOCKER_REGISTRY --username $REGISTRY_USER --password $REGISTRY_PASSWORD
+    - echo "build docker with file:$DOCKERFILE_NAME under $DOCKER_BUILD_PATH with args:$DOCKER_BUILD_ARGS, pushing to $CI_REGISTRY_IMAGE:$IMAGE_TAG"
+    - sleep $DEBUGGING_TIME
+    - docker build $DOCKER_BUILD_ARGS -t $CI_REGISTRY_IMAGE:$IMAGE_TAG -f $DOCKERFILE_NAME .
+    - docker push $CI_REGISTRY_IMAGE:$IMAGE_TAG

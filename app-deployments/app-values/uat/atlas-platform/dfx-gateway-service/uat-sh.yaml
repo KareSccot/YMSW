@@ -1,0 +1,35 @@
+app:
+  env: uat
+
+image:
+  tag: dev
+
+env:
+  SPRING_PROFILES_ACTIVE: uat
+  POSTGRES_URL: xx
+  POSTGRES_USER: xx
+  POSTGRES_PASSWD: xx
+
+ingress:
+  className: nginx-internal
+  tls: 
+    - hosts:
+      - uat.dfx-sciwriter.wuxibiologics.com
+      secretName: dfx-sciwriter-tls-cert
+  hosts:
+    - host: uat.dfx-sciwriter.wuxibiologics.com
+      paths: 
+      - backend:
+          service:
+            name: dfx-gateway-service-uat
+            port:
+              number: 80
+        path: /api
+        pathType: Prefix
+      - backend:
+          service:
+            name: dfx-frontend-uat
+            port:
+              number: 80
+        path: /
+        pathType: Prefix    

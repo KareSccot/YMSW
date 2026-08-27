@@ -1,0 +1,68 @@
+# ariba/ariba-srmp-ui 的 .gitlab-ci.yml
+# include leader 指的 dfx-sciwriter 前端流程，再 override 成 ariba-srmp-ui 的值。
+# 不碰 team-cicd 共享模板（问题一 A 方案，只动自己仓库）。
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/dfs-sciwriter-team
+    file: '/dfx-sciwriter/frontend-workflow.yml'
+
+variables:
+  # 镜像推到 TCR：${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}
+  # 占位，实际命名空间 push 前跟 ariba Maintainer 确认
+  SERVICE_REPOSITORY: "ariba"
+  IMAGE_NAME: "${CI_PROJECT_NAME}"
+  # ArgoCD deploy job 用 TEAM 拼 app-values/<env>/<TEAM>/<service>/... 路径
+  # 占位，真部署前跟 ariba/K8s 运维确认实际 team 名。设错只影响 deploy，不挡 build。
+  TEAM: "ariba"
+
+# build-app：dfx-sciwriter 默认 pnpm+npm build+build/libs，ariba 改成 yarn+dist+按环境选命令
+build-app:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:1.0.0
+  variables:
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: "dist"            # vite 默认产物，不是 build/libs（那是 gradle 路径）
+  script:
+    - cd $BUILD_FOLDER
+    - node -v && npm -v
+    - corepack enable || npm install -g yarn@1.22.22  # node18 镜像不一定带 yarn
+    - yarn install                                       # 用 yarn 不是 pnpm（packageManager 声明 yarn）
+    # 按分支选环境，不裸跑 yarn build（package.json 有 build:test/uat/prod 三个环境）
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "UAT" ]; then
+        yarn build:uat
+      elif [ "$CI_COMMIT_BRANCH" = "Master" ] || [ "$CI_COMMIT_BRANCH" = "master" ]; then
+        yarn build:prod
+      else
+        yarn build:test
+      fi
+  artifacts:
+    # 必须显式声明——没设 BUILD_TOOL=pnpm，模板的 artifacts 定义不会 include 进来
+    paths:
+      - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/"
+
+# build-container：把 dist/ 打成 nginx 镜像推 TCR。只改 SERVICE_PORT 成前端 80
+build-container:
+  variables:
+    DOCKER_BUILD_PATH: '.'
+    SERVICE_PORT: 80
+    DOCKER_BUILD_ARGS: "--build-arg SERVICE_PORT=${SERVICE_PORT}"
+
+# 部署走 ArgoCD（K8s），不走 VM Docker。deploy-dev 关掉（跟 ariba 组后端惯例一致），
+# deploy-uat/prod 是模板默认的 manual（手动点）。真部署前要确认 TEAM + ArgoCD Application 就位
+deploy-dev:
+  rules:
+    - when: never
+
+# 安全扫描 job（security-scan）不 override——让它按模板默认跑（dev push + MR 时跑）。
+# 注意：本链的安全 job 叫 security-scan，不是 ariba 后端那套 DockerScan/SCA 名字（那些在这链里不存在，
+# 拿那些名 override 是空操作）。让它默认跑 = 最全覆盖、最合规、6 条红线一个没关。
+# 如果 pipeline 显示 security-scan skipped/exit 0，是 AppSec 还没配 SAST/SCA 变量，不是我们关的——
+# 找 ariba Maintainer 联系 AppSec 配。
+
+default:
+  tags:
+    - tencent
+    - mno
+    - shared
+    - platform    # ariba 组标签，不是 dfx-sciwriter 的 atlas（ariba 没 atlas runner）

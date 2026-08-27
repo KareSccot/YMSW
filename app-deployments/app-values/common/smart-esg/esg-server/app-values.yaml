@@ -1,0 +1,36 @@
+app:
+  name: smart-esg-server
+
+image:
+  namespace: smart-esg
+  repository: smart-esg-server
+
+imagePullSecrets:
+  - name: esg-image-pull-secret
+
+env:
+  TZ: Asia/Shanghai
+
+service:
+  type: LoadBalancer
+  port: 9090
+  targetPort: 9090
+
+pod:
+  port: 9090
+
+volumeMounts:
+  - name: esg-doc
+    mountPath: /opt/esg/doc
+  - name: esg-attachment
+    mountPath: /opt/esg/attachment
+
+volumes:
+  - name: esg-doc
+    hostPath:
+      path: /opt/esg/doc
+      type: Directory
+  - name: esg-attachment
+    hostPath:
+      path: /opt/esg/attachment
+      type: Directory

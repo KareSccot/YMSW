@@ -1,0 +1,64 @@
+# Java 项目 Dockerfile —— **参数化版本**（推荐 / PMS 风格）
+#
+# 适用场景：
+#   - .gitlab-ci.yml 的 build-app job 已经把 jar 构建出来（artifact）
+#   - 想在 .gitlab-ci.yml 里通过 build-container.variables.DOCKER_BUILD_ARGS 控制
+#     "用哪个运行时镜像作 FROM"，而不是写死在 Dockerfile 里
+#
+# 优点：
+#   - 同一个 Dockerfile 可以支持多个 service / 多个运行时版本（只改 .gitlab-ci.yml）
+#   - 运行时镜像版本升级时不动 Dockerfile
+#
+# 配套的 .gitlab-ci.yml 片段：
+#   build-container:
+#     variables:
+#       DOCKER_BUILD_ARGS: "--build-arg BASE_IMAGE=<TCR>/devops/jre11.0.16:<tag> \
+#                           --build-arg BUILD_FOLDER=. \
+#                           --build-arg ARTIFACT_FOLDER=target \
+#                           --build-arg PACKAGE_NAME=myapp \
+#                           --build-arg SERVICE_PORT=8080"
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG PACKAGE_NAME
+ARG BUILD_FOLDER
+ARG ARTIFACT_FOLDER
+ARG SERVICE_PORT=8080
+ARG JAVA_OPTS=""
+
+# 国内源默认开（清华），外网构建时由 DOCKER_BUILD_ARGS 覆盖为空字符串
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+
+# jre 基础镜像已切到 appuser；需要 root 安装包时打开下行 + sed 替换源
+# USER root
+# RUN if [ -n "$APT_MIRROR" ]; then \
+#       sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+#       && sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+#     fi
+
+ADD ${BUILD_FOLDER}/${ARTIFACT_FOLDER}/*.jar /app/${PACKAGE_NAME}.jar
+RUN ls /app/${PACKAGE_NAME}.jar
+
+# 容器内应用监听的端口（永远 ≥1024）；host 端给用户的端口在 docker-compose.yml 里映射
+EXPOSE ${SERVICE_PORT}
+
+ENV PACKAGE_NAME=${PACKAGE_NAME}
+ENV JAVA_OPTS=${JAVA_OPTS}
+
+# === 仅当应用容器自己 terminate SSL 时打开下面这段 ===
+# 必要原因：cicd-template 部署脚本把 server.crt/key scp 为 root:600，
+#         容器内 appuser 读不了 → entrypoint 以 root 调权限再切回 appuser。
+# 详见 references/ssl-cert.md § F + templates/entrypoint-ssl.sh.example
+#
+# USER root
+# RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+#     && rm -rf /var/lib/apt/lists/*
+# COPY entrypoint-ssl.sh /usr/local/bin/entrypoint.sh
+# RUN chmod +x /usr/local/bin/entrypoint.sh
+# ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/${PACKAGE_NAME}.jar"]
+
+# HTTP-only 默认：jre 基础镜像已切到 appuser，直接 ENTRYPOINT 跑 java
+ENTRYPOINT java $JAVA_OPTS -jar /app/${PACKAGE_NAME}.jar
+CMD []

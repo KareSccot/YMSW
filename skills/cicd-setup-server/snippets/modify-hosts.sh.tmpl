@@ -1,0 +1,9 @@
+# 已被合并到 runbook § 2，此文件保留作为单独片段参考
+
+# 追加 TCR 内网解析（替换 <TCR_INTERNAL_IP> 和 <TCR_DOMAIN>）
+sudo tee -a /etc/hosts > /dev/null <<EOF
+<TCR_INTERNAL_IP>   <TCR_DOMAIN>
+EOF
+
+# 验证
+getent hosts <TCR_DOMAIN>

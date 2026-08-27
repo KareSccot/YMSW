@@ -1,0 +1,44 @@
+# ariba-srmp-ui 前端 SPA nginx 配置
+# 该文件在 Dockerfile 里 COPY 到 /etc/nginx/conf.d/default.conf
+
+server {
+    # 监听 HTTP 80（IPv4 + IPv6）。SSL 由上游 K8s Ingress 终止，容器内只跑 HTTP。
+    listen       80;
+    listen  [::]:80;
+    server_name  _;   # 匹配任意域名，真正的域名路由由 Ingress 负责
+
+    # 静态文件根目录（Dockerfile 里 COPY dist/ 的目标位置）
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # gzip 压缩文本资源，加快首屏
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+    gzip_min_length 1024;
+
+    # SPA 路由回退：找不到文件时回退到 index.html，由前端路由接管。
+    # 不加这行，Vue Router history 模式下刷新 /profile/123 这类深链接会 404。
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # vite 打包产物文件名带内容 hash，可长缓存；hash 变了会自动拿到新文件
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 入口 index.html 不缓存，保证发版后用户拿到最新入口
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # API 反代（后端地址确认后取消注释启用）
+    # location /api/ {
+    #     proxy_pass http://<后端 K8s Service 名>:<端口>/;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    # }
+}

@@ -1,0 +1,76 @@
+{
+  "skill_name": "cicd-init-repo",
+  "evals": [
+    {
+      "id": 1,
+      "name": "single-service-python-greenfield",
+      "prompt": "Setup CICD for an empty new Python project. Project directory: <will be set per run>. The user pre-supplied these answers (don't call AskUserQuestion, use these directly):\n\nBatch 1:\n- 项目结构: 单服务\n- SERVICE_NAME: mypybot\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是 (只走 VM 容器部署)\n\nBatch 2:\n- 语言: Python\n- 构建产物位置: Dockerfile 多阶段构建（Python 解释型不需要 build-app）\n- Dockerfile 模式: 参数化\n- 编译环境镜像: 不需要 (Python 跳过)\n\nBatch 3:\n- 运行时基础镜像: python:3.12-slim (docker hub 公网)\n\nFollow the SKILL.md workflow to generate .gitlab-ci.yml, Dockerfile, docker-compose.yml, and output the GitLab Variables checklist. Do NOT make git/network calls.",
+      "expected_output": "Three files generated in project dir: .gitlab-ci.yml (with team-cicd include, deploy-uat/deploy-prod ArgoCD disabled, NO BUILD_TOOL, NO build-app override since Python+multi-stage), Dockerfile (Python parameterized with Tsinghua mirror defaults + non-root appuser), docker-compose.yml (with ${IMAGE_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG} + CUSTOM_ env vars). Final variables checklist includes Docker Registry 4, UAT SSH 7, and project-specific CUSTOM_* extracted from compose.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "single-service-java-audit-broken-compose",
+      "prompt": "Audit and fix an existing Java + Maven project's CICD. Project directory has:\n- pom.xml (Maven project)\n- An existing docker-compose.yml with intentional bugs:\n    services:\n      myjavasvc:\n        image: myregistry.local/myjavasvc:latest\n        environment:\n          - DB_PASSWORD=${DB_PASSWORD}\n          - APP_TOKEN=${CUSTOM_APP_TOKEN}\n          - LOG_LEVEL=info\n\nThe user pre-supplied these answers (don't call AskUserQuestion):\n\nBatch 1:\n- 项目结构: 单服务\n- SERVICE_NAME: myjavasvc\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是\n\nBatch 2:\n- 语言: Java + Maven\n- 构建产物位置: A (在 CI 里独立 build-app)\n- Dockerfile 模式: 参数化\n- 编译环境镜像: jdk11.0.16_mvn3.0.5 (tag: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk11.0.16_mvn3.0.5:v1.0.0)\n\nBatch 3:\n- 运行时基础镜像: jre11.0.16 (tag: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jre11.0.16:v1.0.0)\n\nFollow SKILL.md. The Dockerfile doesn't exist → generate it (parameterized Java + Tsinghua). docker-compose.yml exists → audit, fix the two violations (hardcoded image, non-CUSTOM_ DB_PASSWORD), via Edit (not rewrite). Output GitLab Variables checklist at end.",
+      "expected_output": "1) .gitlab-ci.yml generated with: team-cicd include, variables.BUILD_TOOL=mvn, build-app re-enabled (rules + image override), build-container.variables.DOCKER_BUILD_ARGS with BASE_IMAGE + BUILD_FOLDER + PACKAGE_NAME + SERVICE_PORT, deploy-uat/deploy-prod (ArgoCD) disabled with when:never. 2) Dockerfile created (java-parameterized template, ARG BASE_IMAGE, ARG APT_MIRROR=tsinghua, COPY target/*.jar). 3) docker-compose.yml fixed via Edit: image line corrected to ${IMAGE_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG}, DB_PASSWORD placeholder renamed to ${CUSTOM_DB_PASSWORD}. 4) Variables checklist includes Docker Registry 4 + UAT SSH 7 + CUSTOM_DB_PASSWORD (Masked) + CUSTOM_APP_TOKEN (Masked).",
+      "files": [
+        {
+          "path": "docker-compose.yml",
+          "content": "services:\n  myjavasvc:\n    image: myregistry.local/myjavasvc:latest\n    ports:\n      - \"8080:8080\"\n    environment:\n      - DB_PASSWORD=${DB_PASSWORD}\n      - APP_TOKEN=${CUSTOM_APP_TOKEN}\n      - LOG_LEVEL=info\n    restart: unless-stopped\n"
+        },
+        {
+          "path": "pom.xml",
+          "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n    <modelVersion>4.0.0</modelVersion>\n    <groupId>com.example</groupId>\n    <artifactId>myjavasvc</artifactId>\n    <version>1.0.0</version>\n    <packaging>jar</packaging>\n</project>\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "multi-service-monorepo",
+      "prompt": "Setup CICD for a multi-service mono-repo. Project directory has two service subdirs (svc-a/ and svc-b/, each with pom.xml or package.json).\n\nThe user pre-supplied these answers for Batch 1 (don't call AskUserQuestion):\n- 项目结构: 多服务 mono-repo\n- 项目前缀: demo\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是\n\nFor Step 2.B (multi-service path), the user has ALREADY filled in cicd-services.yml at the project root (do NOT overwrite or ask). Read it and use the values directly. Content of cicd-services.yml:\n\nproject:\n  prefix: demo\n  build_images:\n    mvn: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk11.0.16_mvn3.0.5:v1.0.0\"\n    npm: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:v1.0.0\"\nservices:\n  - name: svc-a\n    language: java-mvn\n    build_folder: ./svc-a\n    artifact_folder: target\n    dockerfile: Dockerfile_backend\n    base_image: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jre11.0.16:v1.0.0\"\n    service_port: 8080\n  - name: svc-b\n    language: node-npm\n    build_folder: ./svc-b\n    artifact_folder: dist\n    dockerfile: Dockerfile_frontend\n    base_image: \"nginx:1.29.4-alpine\"\n    service_port: 443\n\nFollow SKILL.md multi-service path. Skip the 'wait for user done' step (file is already valid). Generate root .gitlab-ci.yml, ci/svc-a.yml, ci/svc-b.yml. For Dockerfile_backend and Dockerfile_frontend (both don't exist), generate them (parameterized templates). Output Variables checklist (single docker-compose.yml is NOT in scope here; multi-service docker-compose audit can be skipped).",
+      "expected_output": "1) Root .gitlab-ci.yml: include team-cicd, .demo-mvn-build base job (extends .build, image=jdk11_mvn3.0.5), .demo-npm-build (image=node18_npm9.8.1), .demo-build-docker base, include local ci/svc-a.yml and ci/svc-b.yml, build-app/build-container both when:never, deploy-uat/deploy-prod (ArgoCD) when:never. 2) ci/svc-a.yml: svc-a-app extends .demo-mvn-build with BUILD_FOLDER=./svc-a ARTIFACT_FOLDER=target; svc-a-container extends .demo-build-docker with DOCKERFILE_NAME=Dockerfile_backend, IMAGE_NAME=svc-a, DOCKER_BUILD_ARGS with BASE_IMAGE=jre11.0.16 etc; DockerScan-svc-a. 3) ci/svc-b.yml similar but extends .demo-npm-build, Dockerfile_frontend, BASE_IMAGE=nginx. 4) Dockerfile_backend (java-parameterized, Tsinghua mirror, says 'shared by: svc-a'). 5) Dockerfile_frontend (frontend-nginx-parameterized, Tsinghua apk mirror).",
+      "files": [
+        {
+          "path": "svc-a/pom.xml",
+          "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n    <modelVersion>4.0.0</modelVersion>\n    <groupId>com.example</groupId>\n    <artifactId>svc-a</artifactId>\n    <version>1.0.0</version>\n</project>\n"
+        },
+        {
+          "path": "svc-b/package.json",
+          "content": "{\n  \"name\": \"svc-b\",\n  \"version\": \"1.0.0\",\n  \"scripts\": { \"build\": \"echo build-stub\" }\n}\n"
+        },
+        {
+          "path": "cicd-services.yml",
+          "content": "project:\n  prefix: demo\n  build_images:\n    mvn: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk11.0.16_mvn3.0.5:v1.0.0\"\n    npm: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:v1.0.0\"\nservices:\n  - name: svc-a\n    language: java-mvn\n    build_folder: ./svc-a\n    artifact_folder: target\n    dockerfile: Dockerfile_backend\n    base_image: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jre11.0.16:v1.0.0\"\n    service_port: 8080\n  - name: svc-b\n    language: node-npm\n    build_folder: ./svc-b\n    artifact_folder: dist\n    dockerfile: Dockerfile_frontend\n    base_image: \"nginx:1.29.4-alpine\"\n    service_port: 443\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "https-python-uvicorn",
+      "prompt": "Setup CICD for an empty new Python project that serves HTTPS in container. The user pre-supplied these answers (don't call AskUserQuestion):\n\nBatch 1:\n- 项目结构: 单服务\n- SERVICE_NAME: pyhttps\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是\n\nBatch 2:\n- 语言: Python\n- 构建产物位置: Dockerfile 多阶段构建\n- Dockerfile 模式: 参数化\n- 编译环境镜像: 不需要 (Python 跳过)\n\nBatch 3:\n- 运行时基础镜像: python:3.12-slim\n- Q10 应用容器是否监听 HTTPS: B (是，容器自己 terminate SSL)\n- Q11 CUSTOM_HOST_PORT: 443\n- Q12 CUSTOM_APP_PORT: 8000\n\nFollow SKILL.md. Q10=B 触发 Step 3.2 的 entrypoint 自动逻辑：生成的 Dockerfile 必须含 gosu install + COPY entrypoint-ssl.sh + ENTRYPOINT 行（不写 USER appuser，由 entrypoint 切换）；项目根要拷一份 entrypoint-ssl.sh 文件。docker-compose.yml 的 ports 行必须是 \"443:${CUSTOM_APP_PORT:-8000}\"。最终变量清单含 CUSTOM_HOST_PORT/CUSTOM_APP_PORT/UAT_SSL_CERT/UAT_SSL_KEY。Step 5 输出必含 HTTPS deployment gotchas 段。",
+      "expected_output": "Generated: .gitlab-ci.yml (team-cicd include, ArgoCD disabled, no BUILD_TOOL), Dockerfile (Python with ENTRYPOINT entrypoint-ssl.sh, no USER appuser at end, gosu installed), entrypoint-ssl.sh (chmod + gosu pattern), docker-compose.yml (ports: 443:8000), variables-checklist.md (含 CUSTOM_HOST_PORT=443, CUSTOM_APP_PORT=8000, UAT_SSL_CERT, UAT_SSL_KEY 都标必填). Final report has 'HTTPS deployment gotchas' section warning about cert permission + privileged ports.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "https-frontend-nginx",
+      "prompt": "Setup CICD for a Vue SPA project that runs nginx in container serving HTTPS. The user pre-supplied these answers:\n\nBatch 1:\n- 项目结构: 单服务\n- SERVICE_NAME: vueapp\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是\n\nBatch 2:\n- 语言: Node + npm\n- 构建产物位置: A (CI 里独立 build-app)\n- Dockerfile 模式: A (参数化)\n- 编译环境镜像: node18_npm9.8.1 (tag: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:v1.0.0)\n\nBatch 3:\n- 运行时基础镜像: nginx:1.29.4-alpine\n- Q10 应用容器是否监听 HTTPS: B (是，nginx 容器跑 443)\n- Q11 CUSTOM_HOST_PORT: 443\n- Q12 CUSTOM_APP_PORT: 8000\n\n注意：alpine base 用 su-exec 而非 gosu。但 nginx 默认 root 跑、无 USER appuser 切换，所以 entrypoint 段处理略不同 —— Dockerfile.frontend-nginx 模板的注释里说明了 nginx 一般不切非 root，此场景可只 mount SSL 不动 entrypoint。Follow SKILL.md。",
+      "expected_output": "Generated: .gitlab-ci.yml (team-cicd include + build-app re-enabled with node18 image + DOCKER_BUILD_ARGS with BASE_IMAGE=nginx:1.29.4-alpine + DOCKERFILE_NAME=Dockerfile_frontend), Dockerfile_frontend (parameterized nginx + alpine), entrypoint-ssl.sh present optionally (nginx default root, entrypoint section commented out is OK), docker-compose.yml (ports: 443:8000 mapped, volumes include server.crt/key mounts), variables-checklist.md (含 CUSTOM_HOST_PORT, CUSTOM_APP_PORT, UAT_SSL_CERT/KEY 必填). Step 5 HTTPS gotchas present.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "http-only-regression",
+      "prompt": "Setup CICD for an empty Python project — HTTP only, NO HTTPS in container (regression test). The user pre-supplied these answers:\n\nBatch 1:\n- 项目结构: 单服务\n- SERVICE_NAME: httponly\n- 部署环境: UAT only\n- 禁用 ArgoCD: 是\n\nBatch 2:\n- 语言: Python\n- 构建产物位置: Dockerfile 多阶段构建\n- Dockerfile 模式: 参数化\n- 编译环境镜像: 不需要\n\nBatch 3:\n- 运行时基础镜像: python:3.12-slim\n- Q10 应用容器是否监听 HTTPS: A (否，容器只跑 HTTP)\n  → 不再追问 Q11/Q12\n\nFollow SKILL.md。期望生成的文件**不含** entrypoint-ssl.sh，Dockerfile **不含** gosu/su-exec，docker-compose.yml ports 行保留模板默认 \"${CUSTOM_HOST_PORT:-8080}:${CUSTOM_APP_PORT:-8080}\"。Step 5 **不**输出 HTTPS gotchas 段。变量清单 SSL_CERT/KEY 标按需可空。这是为了验证 HTTPS 改动没破坏 HTTP-only 路径（回归测试）。",
+      "expected_output": "Generated: .gitlab-ci.yml (Python multi-stage path, no BUILD_TOOL), Dockerfile (USER appuser at end, no gosu, no ENTRYPOINT entrypoint-ssl), docker-compose.yml (ports: ${CUSTOM_HOST_PORT:-8080}:${CUSTOM_APP_PORT:-8080} unchanged from template), variables-checklist.md (SSL_CERT/KEY 标按需空), NO entrypoint-ssl.sh in project, Step 5 final report does NOT contain 'HTTPS deployment gotchas' section. Both port variables present but standard defaults.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "multi-node-lb-deploy",
+      "prompt": "Setup CICD for a multi-service mono-repo that deploys PROD across TWO load-balanced VMs (master + slave), like PMS. Project has two service subdirs (svc-a/ Java, web/ Vue SPA).\n\nThe user pre-supplied Batch 1 (don't call AskUserQuestion):\n- 项目结构: 多服务 mono-repo\n- 项目前缀: demo\n- 部署环境: UAT + PROD\n- 禁用 ArgoCD: 是\n\ncicd-services.yml is ALREADY filled at project root (do NOT overwrite or ask). Read and use it:\n\nproject:\n  prefix: demo\n  build_images:\n    mvn: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk11.0.16_mvn3.0.5:v1.0.0\"\n    npm: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:v1.0.0\"\nservices:\n  - name: svc-a\n    language: java-mvn\n    build_folder: ./svc-a\n    artifact_folder: target\n    dockerfile: Dockerfile_backend\n    base_image: \"cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jre11.0.16:v1.0.0\"\n    service_port: 8080\n  - name: web\n    language: node-npm\n    build_folder: ./web\n    artifact_folder: dist\n    dockerfile: Dockerfile_frontend\n    base_image: \"nginx:1.29.4-alpine\"\n    service_port: 443\n    serves_https: true\ndeploy:\n  uat:\n    nodes:\n      - name: single\n        target_var: UAT_TARGET\n        compose_file: docker-compose-uat.yml\n        nginx_conf: config/nginx/nginx-uat.conf\n  prod:\n    nodes:\n      - name: master\n        target_var: PROD_MASTER_TARGET\n        compose_file: docker-compose-master.yml\n        nginx_conf: config/nginx/nginx-prod-master.conf\n      - name: slave\n        target_var: PROD_SLAVE_TARGET\n        compose_file: docker-compose-slave.yml\n        nginx_conf: config/nginx/nginx-prod-slave.conf\n\nFollow SKILL.md multi-service path. Skip the 'wait for user done' step (file is valid). Generate root .gitlab-ci.yml, ci/svc-a.yml, ci/web.yml, AND ci/deploy-nodes.yml (because deploy: is filled). Generate Dockerfile_backend + Dockerfile_frontend. Output the Variables checklist. Single docker-compose audit out of scope (the user maintains the per-node compose files themselves).",
+      "expected_output": "1) Root .gitlab-ci.yml includes team-cicd sdlcapi workflow, includes local ci/deploy-nodes.yml, and disables the SINGLE-NODE deploy layer: deploy-container-uat when:never AND deploy-container-prod when:never. 2) COMPLIANCE (critical): NOWHERE in any generated file are DockerScan / SCA / GenSecurityReport / approval / appsec_approval / set-release-manager set to when:never. 3) ci/deploy-nodes.yml defines base jobs .deploy-node-pre and .deploy-node, and uses the GENERIC custom injection loop (contains \"grep '^CUSTOM_'\" and base64), NOT a long list of hardcoded `export FOO=` lines. 4) ci/deploy-nodes.yml has per-node job pairs: uat-single-pre/uat-single, prod-master-pre/prod-master, prod-slave-pre/prod-slave. Each carries its own DOCKER_COMPOSE_FILE (docker-compose-uat.yml / -master.yml / -slave.yml), its own NGINX_CONF (nginx-uat/-prod-master/-prod-slave.conf), and DEPLOY_TARGET pointing at the right var (UAT_TARGET / PROD_MASTER_TARGET / PROD_SLAVE_TARGET). 5) prod-master and prod-slave deploy jobs are when: manual (per-node manual gate); uat-single is on_success. 6) Variables checklist lists per-node target vars PROD_MASTER_TARGET / PROD_SLAVE_TARGET / UAT_TARGET (encoding user@host:/path) and notes CUSTOM_* are auto-injected to every node.",
+      "files": []
+    }
+  ]
+}

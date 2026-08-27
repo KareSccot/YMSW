@@ -1,0 +1,50 @@
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - preference:
+        matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - 10.247.17.201
+      weight: 100
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: node-pool
+          operator: In
+          values:
+          - ariba-mw-srmp-uat
+app:
+  env: uat
+env:
+  SPRING_PROFILES_ACTIVE: uat
+envFromSecret:
+  enabled: true
+  name: ariba-mw-srmp-uat-credentials
+image:
+  tag: uat-146887
+imagePullSecrets:
+- name: ariba-mw-srmp-uat-image-pull-secret
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+  className: nginx-internal
+  enabled: true
+  hosts:
+  - host: wuxi-aribamwuat.wuxibiologics.com
+    paths:
+    - backend:
+        service:
+          name: ariba-middleware-uat
+          port:
+            number: 9090
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - wuxi-aribamwuat.wuxibiologics.com
+    secretName: ariba-mw-srmp-uat-tls-secret
+replicaCount: 1
+serviceAccount:
+  name: ariba-mw-srmp-uat-sa

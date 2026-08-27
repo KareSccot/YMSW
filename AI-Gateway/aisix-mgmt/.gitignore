@@ -1,0 +1,39 @@
+# ── 敏感信息 ──
+.env
+
+# ── SSL 证书（仅保留 .gitkeep，证书文件不应提交）──
+certs/*.pem
+certs/*.key
+certs/*.crt
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+
+# ── 虚拟环境 ──
+venv/
+.venv/
+env/
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── 日志 ──
+logs/
+*.log
+
+# ── 系统文件 ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ──
+# (保留 Dockerfile & docker-compose.yml)

@@ -1,0 +1,50 @@
+include:
+  - project: 'devops/cicd-template'
+    ref: feat/build_prod_image
+    file: '/workflows/app-workflow.yml'
+
+variables:
+  # deploy using argocd instead of container
+  DEPLOY_CONTAINER: "false"
+
+build-app:
+  variables:
+    # update below default variables in each service's yml file if necessary
+    #BUILD_FOLDER: 'pom_file_folder'
+    #ARTIFACT_FOLDER: 'artifact_target_folder_relative_to_build_folder'
+    # update above default variables in each service's yml file
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: ./build/libs
+
+build-container:
+  variables:
+    DOCKER_BUILD_PATH: '.'
+    # update below default variables in each service's yml file
+    #BUILD_FOLDER: 'pom_file_folder'
+    #ARTIFACT_FOLDER: 'artifact_target_folder_relative_to_docker_build_path'
+    #IMAGE_NAME: "define_me"
+    #SERVICE_PORT: 0000
+    # update above default variables in each service's yml file
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: ./build/libs
+    SERVICE_PORT: 8080
+    PACKAGE_NAME: ${IMAGE_NAME}
+    DOCKER_BUILD_ARGS: "--build-arg BUILD_FOLDER=${BUILD_FOLDER} --build-arg ARTIFACT_FOLDER=${ARTIFACT_FOLDER} --build-arg PACKAGE_NAME=${PACKAGE_NAME} --build-arg SERVICE_PORT=${SERVICE_PORT}"
+
+deploy-dev:
+  rules:
+    - when: never
+
+.conditions_for_uat:
+  rules:
+    - !reference [.conditions_for_branch_push, rules]
+    - !reference [.conditions_for_merge_requests, rules]
+    - when: never
+
+
+default:
+  tags:
+  - tencent
+  - mno
+  - shared
+  - platform

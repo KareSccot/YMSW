@@ -1,0 +1,10 @@
+# Patterns to ignore when packaging the opa-service chart.
+.DS_Store
+*.so
+*.dylib
+*.pyc
+*.swp
+*.bak
+.idea/
+.vscode/
+node_modules/

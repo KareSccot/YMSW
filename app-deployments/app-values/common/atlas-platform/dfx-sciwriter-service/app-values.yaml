@@ -1,0 +1,29 @@
+app:
+  name: dfx-sciwriter-service
+
+image:
+  namespace: atlas
+  repository: dfx-sciwriter-service
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: dfx-sciwriter-image-pull-secret
+
+pod:
+  port: 8080
+
+
+livenessProbe:
+  httpGet:
+    path: /sciwriter/actuator/health/liveness    # 关键：必须包含上下文路径
+    port: 8080
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  failureThreshold: 5
+readinessProbe:
+  httpGet:
+    path: /sciwriter/actuator/health/readiness  # 关键：必须包含上下文路径
+    port: 8080
+  initialDelaySeconds: 90
+  periodSeconds: 5
+  failureThreshold: 8

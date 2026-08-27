@@ -1,0 +1,28 @@
+app:
+  env: prod
+env:
+  DB_HOST: 10.247.10.85:3306
+  DB_NAME: db_yaoming_cn
+  DB_USER: official_website_admin
+  WP_HOME: https://www.wuxibiologics.com.cn
+  WP_SITEURL: https://www.wuxibiologics.com.cn
+image:
+  tag: 0-0-7-145004
+ingress:
+  hosts:
+  - host: www.wuxibiologics.com.cn
+    paths:
+    - backend:
+        service:
+          name: cn-website-prod
+          port:
+            number: 80
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - www.wuxibiologics.com.cn
+    secretName: cn-website-tls-cert
+pod:
+  port: 8443
+replicaCount: 3

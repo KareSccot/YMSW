@@ -1,0 +1,23 @@
+include:
+  - local: rules/branch-conditions.yml
+
+# for jobs usually appear in dev/fix branches, or merge request pipeline
+.default_dev_fix_rules:
+  rules:
+    - !reference [.conditions_for_branch_push, rules]
+    - !reference [.conditions_for_merge_requests, rules]
+    - when: never
+
+# for jobs only run in merge request pipeline, like sonar quality gate
+.merge_request_rules:
+  rules:
+    - !reference [.conditions_for_merge_requests, rules]
+    - when: never
+
+# for docker jobs usually appear in dev/fix branches, or merge request pipeline
+.default_dev_fix_docker_rules:
+  rules:
+    - !reference [.conditions_for_docker, rules]
+    - !reference [.conditions_for_branch_push, rules]
+    - !reference [.conditions_for_merge_requests, rules]
+    - when: never

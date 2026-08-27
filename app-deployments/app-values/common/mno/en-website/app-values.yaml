@@ -1,0 +1,26 @@
+app:
+  name: en-website
+
+replicaCount: 2
+
+image:
+  namespace: official-website
+  repository: en-website
+
+imagePullSecrets:
+  - name: official-website-image-pull-secret
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "false"
+  className: nginx-internal
+
+envFromSecret:
+  enabled: true
+  keys:
+    DB_PASSWORD:
+      name: official-website-credentials
+      key: MYSQL_PASSWORD

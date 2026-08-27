@@ -1,0 +1,28 @@
+app:
+  env: uat
+env:
+  DB_HOST: 10.247.17.69:3306
+  DB_NAME: db_yaoming_cn
+  DB_USER: root
+  WP_HOME: https://cn-stg.wuxibiologics.com
+  WP_SITEURL: https://cn-stg.wuxibiologics.com
+image:
+  tag: uat-144942
+ingress:
+  className: nginx-external
+  hosts:
+  - host: cn-stg.wuxibiologics.com
+    paths:
+    - backend:
+        service:
+          name: cn-website-uat
+          port:
+            number: 80
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - cn-stg.wuxibiologics.com
+    secretName: cn-website-tls-cert
+pod:
+  port: 8443

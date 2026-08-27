@@ -1,0 +1,30 @@
+app:
+  name: dfx-gateway-service
+
+image:
+  namespace: atlas
+  repository: dfx-gateway-service
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: dfx-sciwriter-image-pull-secret
+
+pod:
+  port: 8080
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+  className: nginx
+
+  

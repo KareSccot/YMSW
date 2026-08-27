@@ -1,0 +1,8 @@
+include:
+  - local: rules/branch-conditions.yml
+
+# for jobs usually appear in ci branches, like master or main
+.default_uat_rules:
+  rules:
+    - !reference [.conditions_for_uat, rules]
+    - when: never

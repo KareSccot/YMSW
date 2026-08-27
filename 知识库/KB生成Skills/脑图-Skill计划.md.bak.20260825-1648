@@ -1,0 +1,262 @@
+﻿# Domain Skill 脑图
+
+## ▶ 节点 1：知识库（生成能力）
+
+### 🔹 数据获取
+- SSH 认证：零 token，SSH key 引导
+- 固定 3 仓库：
+  - `cicd-template`
+  - `gitlab-management`
+  - `team-cicd`（整仓克隆，含所有分支，不拆分）
+- 自定义仓库入口：SSH URL，零 token
+- 分支选择：
+  - generator 阶段展示所有分支列表，用户交互式选择
+
+### 🔹 内容处理（7 Phase 流水线）
+- Phase 1｜读取：限定 scope 内可读文本（路径/编码/大小过滤）
+- **🆕（已完成）跨仓 include 关联：**
+  - **识别 include 指针（project: 跨仓 vs local: 同仓）**
+  - **project → manifest 找同名 repo 的 local_path → git show <ref>:<file> 读被引用文件**
+  - **合成描述（底层能力 + 组级 override）+ 递归一层防环**
+  - **被引用 ref 不在本地浅克隆 → 回退默认分支 + 标注不可达，不中断**
+- Phase 2｜分类：4 类型标签 → `procedure` / `faq` / `troubleshooting` / `policy`
+- Phase 3｜脱敏：应用领域配置的 `desensitize_rules`
+- Phase 4｜加代码示例：注入领域配置的 `code_examples`
+- Phase 5｜丰富：补充「升级路径」「前置条件」「预估耗时」字段
+- Phase 6｜QA 检查：
+  - 脱敏自检（敏感词残留扫描）
+  - 字段标签格式校验（如 `前置条件：`）
+  - chunk 粒度（200–500 字，自包含）
+  - 双版等价（AI 版 ↔ 人类版语义一致）
+- Phase 7｜输出：按领域配置的 output_naming 和 kb_types 写入文件
+
+### 🔹 输出格式
+- ✅ AI 版（机器友好）：
+  - Frontmatter：`kb_id` / `kb_namespace` / `domain` / `audience` / `layer` / `flow` / `source` / `type` / `owner` / `updated`
+  - 加粗字段标签（`标题`、`步骤`、`注意`）
+  - chunk 自包含，无上下文依赖
+- 🧑‍💻 人类版（旅程式）：
+  - 5 文件结构：`10-新手接入指南.md` `20-日常开发与发版.md` `30-故障排查.md` `40-合规须知.md`
+  - 无 frontmatter，骨架叙事（主语=角色名：`运维工程师需...` `SRE 应确认...`）
+
+- 📁 输出目录：
+  - `~/Desktop/kb-cloned/知识库-外部版-AI/`
+  - `~/Desktop/kb-cloned/知识库-外部版-人类/`
+
+### 🔹 更新机制
+- 🔄 full 模式：首次或全量重建（清空重生成）
+- ➕ update 模式（增量）：
+  - 基于 `commit_sha diff` → `git diff A..B --name-only`
+  - 仅重写变动文件 → 保留用户精修内容（非覆盖）
+- ⚠️ 无变化提醒：
+  - diff 为空 → 提示：“请先 commit & push 再运行更新”
+
+- ⚠️ 当前限制：`team-cicd` 多分支仅记录默认分支 `commit_sha`；其他分支增量需 Phase 3 解决
+- **🆕（已完成）多分支增量检测：**
+  - **manifest schema：多分支仓库 commit_sha(单值) → branch_heads({分支:sha} 映射)，单分支向后兼容**
+  - **scanner：遍历 git branch -r，逐分支 git rev-parse 记 HEAD**
+  - **generator：按用户选的分支分别 diff（同分支内 diff，无跨分支假信号）**
+  - **增量场景：在原 clone 上 fetch（保旧 sha），必要时 --unshallow，避免浅克隆新 tip 导致旧 sha 被 gc → diff bad object**
+- **🆕（已完成）增量更新端到端实测 — 2026-08-24 跑通（#8 逐分支 diff 检测 feat/ariba 改动 + Master 无假信号；#9 include 跨仓 + ref 降级 + 递归一层全 PASS）**
+
+### 🔹 上传分发（规划中）
+- 🌐 生成后上传：
+  - 方式待定：API 自动推送？人工上传？
+- 📜 版本管理：
+  - 方案候选：Git 管理产出目录（含 commit msg 记录生成上下文）  
+  - 或时间戳命名：`kb_v20240520_1423/`
+
+---
+
+## ▶ 节点 2：领域操作（Domain Operations）
+
+### 🔹 框架层（领域配置 + 隔离规则）
+- 领域配置：字段定义（file_patterns / exclude_dirs / desensitize_rules / code_examples / output_naming / kb_types）
+- 领域隔离：各领域独立生成、独立目录、独立 QA
+
+### 🔹 角色操作清单
+
+#### 👤 平台工程师（内部，全功能）
+按功能模块组织，所有模块在平台工程师角色下聚合。
+
+##### 📦 知识库操作模块
+  - 运行 KB 生成：执行 repo-scanner + generator，从 3 个 CI/CD 仓库生成 AI 版 + 人类版 KB
+  - 维护 KB：增量更新（commit_sha diff → 只重写变动文件）
+  - 领域配置管理：维护 domain config，定义脱敏规则、输出命名、质量标准
+
+##### 📦 CI/CD 功能开发模块
+  - 新项目接入 CI/CD（cicd-init-repo）：生成 .gitlab-ci.yml / Dockerfile / docker-compose.yml + 变量清单
+    - 📌 知识驱动（目标）：流水线结构、合规红线内容由 Skill 1 KB 产出更新
+  - 配置部署 VM（cicd-setup-server）：生成装 docker、改 hosts、配 SSH 的 runbook
+  - **🆕（已完成）自动检测 — cicd-init-repo/SKILL.md 加「Step 1.5」章节，6 检测项：**
+    - **包管理器 / 产物路径 / runner tags / BUILD_TOOL 例外 / npm registry / lock file 存在性**
+  - **🆕（已完成）前端 ArgoCD 路径规则 — SKILL.md 加章节，6 条：**
+    - **选 feat/enhance_gradle ref / nginx:<ver>-alpine+COPY dist/ / try_files SPA 回退**
+    - **npm 不设 BUILD_TOOL / 组级 workflow / SERVICE_REPOSITORY 可能被 group CI 变量覆盖**
+  - **🆕（已完成）标准 Dockerfile/nginx 模板 — templates/ 加：**
+    - **Dockerfile.frontend-argocd.example（nginx:alpine+COPY dist+EXPOSE 80）**
+    - **nginx.conf.frontend.example（try_files+gzip+长缓存+index.html 不缓存+API 反代占位）**
+  - **🆕（已完成）CD values YAML 模板 — templates/ 加 + SKILL.md 加 CD 章节：**
+    - **app-values.common.example.yaml（image.ns/repo+imagePullSecrets+SA+probes+resources）**
+    - **app-values.env.example.yaml（image.tag=CI↔CD 握手点+replicaCount+env vars）**
+  - **🆕（已完成）cicd-setup-server VM-only 定界 — K8s/ArgoCD 部署准备不归本 skill（归平台组运维流程）**
+
+##### 📦 安全校验模块
+  - 合规检查：确保安全 job（DockerScan/SCA 等）不被禁用
+  - 安全审核：按统一范式迭代安全 skill
+
+##### 📦 运维模块
+  - 日常维护：基于知识库排查部署失败、环境变量配置问题等
+    - 📌 知识驱动（目标）：故障案例库、恢复步骤由 troubleshooting KB 产出更新
+  - 故障响应：快速定位流水线失败原因，按知识库中记录的标准流程处理
+
+#### 👤 开发者（User-facing，平台 curated）
+面向外部用户的独立 skill，平台工程师对齐后 curated 给出，不暴露内部细节。
+
+##### 📦 接入引导
+  - CI/CD 接入步骤：了解公司 3 阶段流水线，按指引配置项目
+  - 环境准备：本地开发环境、SSH key 配置、TCR 镜像拉取
+
+##### 📦 只读消费
+  - 查流水线状态（不修改配置）
+  - 查发版进度
+  - 参考知识库 FAQ（不修改 KB）
+
+### 🔗 操作间的关系
+- 平台工程师内部的模块可串联（知识库操作 → CI/CD 接入 → 安全校验）
+- 平台工程师 ↔ 开发者：平台 curated 开发者体验（从 KB 产出到开发者指南）
+- 当前安全团队 skill 自包含运行。知识驱动是目标架构，需后续迭代实现
+
+---
+
+## ⛓️ 交叉点：Skill 1（知识库）↔ Skill 2（领域操作）并行 + 知识驱动
+
+### 🔗 manifest（Skill 1 内部机制，Phase 1 锁死字段结构）
+- scanner → generator 的标准化交付物：
+  - `url`: SSH URL  
+  - `branch`: 当前选中分支  
+  - `local_path`: 克隆后本地路径  
+  - `commit_sha`: 本次生成对应 commit  
+  - `domain_hint`: scanner 初判结果  
+  - `scope`: 文件路径范围（如 `./pipelines/`）  
+  - `kb_namespace`: `cicd-team-a`（用于多租户隔离）  
+  - `scan_timestamp`: ISO8601 时间戳  
+- ⚠️ 内部机制不等于可以随便改：字段结构 Phase 1 锁死，确保 repo-scanner ↔ generator 接口稳定  
+
+### 🔗 并行 + 知识驱动关系
+- 运行时层：并行 — Skill 1 和 Skill 2 各自独立运行，互不依赖
+- 知识层：知识驱动（目标状态） — Skill 2 中涉及 CI/CD 知识的操作流程，其内容由 Skill 1 的 KB 产出驱动
+  - Skill 1 KB 更新 → Skill 2 中引用该知识的部分同步更新（因果驱动，不是纯可选）
+  - 平台工程师·CI/CD 功能开发模块（cicd-init-repo）：流水线结构、合规红线内容由 KB 驱动
+  - 开发者·接入引导：接入指南内容由人类版 KB 驱动（平台 curated 给出）
+  - 平台工程师·运维模块：故障案例库、恢复步骤由 troubleshooting KB 驱动
+- ⚠️ 当前状态：安全团队现有 skill 自包含运行，尚未消费 KB。知识驱动是目标架构，需后续迭代实现
+- 两 skill 共享领域配置 schema 作为共同输入
+- 领域配置是共享输入，不是 Skill 1 产出给 Skill 2
+
+
+### 🔗 平台工程师 ↔ 开发者（curation 关系）
+- 平台工程师是全功能角色，掌握所有 skill
+- 开发者是 user-facing 角色，只消费平台 curated 的内容
+- 开发者的 skill coverage 由平台对齐后给出
+- 具体形式待定：可能是独立 user-facing skill，也可能是平台从 KB 产出的开发者指南
+
+### 🔗 Skill 1（生产端）→ 平台工程师·知识库操作模块（消费端）
+- Skill 1 = 知识库怎么生成（scanner → generator → 7 Phase → 输出）
+- 平台工程师·知识库操作模块 = 谁来运行、怎么维护（运行 KB 生成、增量更新、配置管理）
+- 节点 1 是技术实现视角，节点 2 是角色操作视角——同一件事的两个面，不重复
+
+### 🔗 待确认议题
+1. 开发者是主动调用 skill 还是被动消费 curated 内容？——决定是否为开发者写独立 SKILL.md
+2. 安全模块是描述该做什么还是记录他们已做什么？——安全团队自己维护 skill，我们定范式
+3. Role 聚合点的技术落地形式——CLI / Web UI / skill 自动识别角色？超出当前脑图范围但需明确方向
+
+### 🔗 生成流程依赖
+- 知识库「内容处理」强依赖领域配置：
+  - `desensitize_rules` ← 领域配置
+  - `code_examples` ← 领域配置
+  - `output_naming` ← 领域配置
+  - `kb_types` ← 领域配置（过滤非法 type）
+- ❗ generator 必须先加载对应领域配置，否则中断
+
+### 🔗 增量更新的领域粒度
+- 🤔 关键问题：`team-cicd` 多分支下，增量按「分支」还是「领域」粒度？
+- 🚧 当前现状：
+  - commit_sha 仅存默认分支 → 其他分支增量失效  
+- 🛠️ Phase 3 待解：
+  - manifest 中增加 `per_branch_commit_sha` 映射  
+  - 或改用 `git for-each-ref --format='%(refname:short) %(objectname)' refs/heads/` 动态抓取  
+
+### 🔗 统一入口（规划中）
+- 🌐 V3 目标：不同角色用户通过统一入口发现和调用各自需要的 skill
+- Phase 1 不实现，标注为后续规划方向
+- 候选方案：wrapper skill 或导航层
+---
+
+## ▶ 问题定义与验证标准
+
+### 大问题
+- (A) 知识提取：怎么把散落在 CI/CD 代码仓库中的基础设施知识，变成可检索、可消费的结构化知识库？
+- (B) 知识驱动操作：怎么让不同角色基于知识库做自己的领域操作，而不是各自从零摸索？
+
+### 小问题拆分与验证
+
+#### Skill 1（知识库）
+
+##### Q1：如何从固定 3 仓库安全获取源代码？
+- 验证：SSH 零 token 克隆成功 + manifest 输出（含 url/branch/commit_sha/scope 等字段）
+- 状态：✅ 已实现
+
+##### Q2：如何生成结构化 + 旅程式双版知识库？
+- 验证：AI 版 frontmatter 完整 + chunk 自包含；人类版按 type 分篇对齐
+- 状态：✅ 已实现
+
+##### Q3：如何在源仓库更新后只增量更新变动文件？
+- 验证：git diff 命中变动文件 + 用户精修内容保留（非覆盖）
+- 状态：✅ 已实现（单分支）；多分支增量待 Phase 3
+- **🆕（已完成）已解决多分支**
+
+##### Q4：如何确保脱敏后无敏感信息残留？
+- 验证：Phase 6 QA 自检扫描通过 + 双版脱敏等价
+- 状态：✅ 已实现
+
+##### Q5：如何将生成的 KB 分发到知识集 / DEAP 平台？
+- 验证：KB 文件成功上传到目标平台，用户可检索到
+- 状态：🚧 待实现
+
+#### Skill 2（领域操作）
+
+##### Q6：如何让平台工程师·CI/CD 功能开发模块为新项目接入 CI/CD？
+- 验证：cicd-init-repo 生成 .gitlab-ci.yml / Dockerfile / docker-compose.yml + 变量清单
+- 状态：✅ 已有（安全团队已实现，归入平台工程师模块）
+
+##### Q7：如何让平台工程师·CI/CD 功能开发模块配置部署 VM？
+- 验证：cicd-setup-server 生成 runbook（docker/hosts/SSH/sshd）
+- 状态：✅ 已有（安全团队已实现，归入平台工程师模块）
+
+##### Q8：如何让 Skill 2 的操作流程由 Skill 1 KB 驱动更新？（知识驱动）
+- 验证：KB 中流水线结构更新后，cicd-init-repo 生成的 .gitlab-ci.yml 中 include 路径与 KB 记录的路径一致——用 `git diff` 对比 KB 更新前后 cicd-init-repo 的产出差异
+- 状态：🚧 目标架构，待后续迭代
+
+##### Q9：如何让开发者通过知识库了解 CI/CD 流程？
+- 验证：开发者按人类版 KB 的接入指南完成环境配置，成功提交第一次代码到 feature 分支并触发流水线
+- 状态：🚧 待实现
+
+##### Q10：如何让平台工程师·运维模块基于知识库排障？
+- 验证：平台工程师·运维模块遇到流水线失败时，通过 troubleshooting KB 定位到对应故障案例并按恢复步骤解决
+- 状态：🚧 待实现
+
+##### Q11：如何确保开发者只看到/只改平台 curated 的内容，不暴露内部细节？
+- 验证：开发者 skill 中无 token/SSH/内部路径等敏感信息；开发者无法修改知识库配置、domain config 等内部内容
+- 状态：🚧 待实现（V5 leader 明确要求）
+
+##### Q12：如何支持新领域（如 VLM）快速接入框架？
+- 验证：新领域团队按 domain config 标准写一份配置 + 操作 skill，不需要修改其他团队的 skill
+- 状态：🚧 待实现（框架层已设计，尚未有第二个领域验证）
+
+##### Q13：如何提供统一入口让不同角色发现和调用各自的 skill？
+- 验证：用户通过统一入口找到自己角色对应的 skill，无需知道底层架构
+- 状态：🚧 规划中（V3 目标），Phase 1 不实现
+
+
+---

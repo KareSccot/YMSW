@@ -1,0 +1,100 @@
+include:
+  - local: jobs/security/scan.yml
+  - local: rules/dev-fix-rules.yml
+
+DockerScan:
+  stage: quality
+  when:  on_success
+  allow_failure: true
+  variables:
+    TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL: "${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}/$SERVICE_NAME:$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID"
+    SECURITY_ENABLE_BLOCK: "0"
+  extends:
+    - .security-scan
+    - .default_dev_fix_docker_rules
+  dependencies: []
+  needs:
+    - build-container
+
+SAST:
+  stage: quality
+  when:  always
+  allow_failure: true
+  variables:
+    SAST_PROJECT_ID: ""
+    SAST_APP_ID: ""
+    SECURITY_SAST_SCAN_TIMEOUT: 3600
+    SECURITY_ENABLE_BLOCK: "0"
+    Has_SAST: "1"
+  extends:
+    - .security-scan
+    - .default_dev_fix_rules
+  dependencies: []
+
+SCA:
+  stage: quality
+  when:  always
+  allow_failure: true
+  variables:
+    SCA_PROJECT_TOKEN: ""
+    SECURITY_ENABLE_BLOCK: "0"
+    Has_SCA: "1"
+  extends:
+    - .security-scan
+    - .default_dev_fix_rules
+  dependencies: []
+
+ThreatModeling:
+  stage: quality
+  when:  on_success
+  allow_failure: true
+  variables:
+    SECURITY_ENABLE_BLOCK: "0"
+    Has_ThreatModel: "1"
+  extends:
+    - .security-scan
+    - .default_dev_fix_rules
+  dependencies: []
+
+GenSecurityReport:
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      command: ["--registry-mirror", "https://mirror.ccs.tencentyun.com"]
+  before_script:
+    - docker info
+  stage: security-report
+  when:  always
+  allow_failure: true
+  artifacts:
+    paths:
+      - "${ARTIFACT_FOLDER}/*.html"
+  variables:
+     #system requirements
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_OPTS: "--dns=${WUXI_DNS}"
+    ARTIFACT_FOLDER: './security-scan-results'
+    SECSCAN_REGISTRY_IMAGE: "${DOCKER_REGISTRY}/devops/${SECURITY_SCAN_IMAGE_NAME}"
+    APP_NAME: "${CI_PROJECT_NAME}"
+    CODE_BRANCH: "${CI_COMMIT_BRANCH}"      # current code branch
+    CODE_COMMIT_HASH: "${CI_COMMIT_SHA}"    # current commit hash
+  extends:
+    - .default_dev_fix_rules
+  script:
+    - echo "Generate security report"
+    - |
+      if [ -z "$(ls -A ${ARTIFACT_FOLDER}/*.json 2>/dev/null)" ]; then
+        echo "No JSON files found in ${ARTIFACT_FOLDER}, no security report will be generated. Skipping curret step."
+        exit 0
+      fi
+    - echo "$REGISTRY_PASSWORD" | docker login $DOCKER_REGISTRY --username "$REGISTRY_USER" --password-stdin
+    - echo "Pulling image ${SECSCAN_REGISTRY_IMAGE}:${SECURITY_SCAN_IMAGE_VERSION}..."
+    - docker pull "${SECSCAN_REGISTRY_IMAGE}":"${SECURITY_SCAN_IMAGE_VERSION}"
+    - CONTAINER_NAME="SecurityScan-${APP_NAME}-${CI_PIPELINE_IID}"
+    - echo "WUXI_DNS:${WUXI_DNS}"
+    - mkdir -p ${ARTIFACT_FOLDER} && chmod 777 ${ARTIFACT_FOLDER}
+    - DOCKER_CMD="docker run --rm --name ${CONTAINER_NAME} --dns ${WUXI_DNS} -v ${ARTIFACT_FOLDER}:/app/${ARTIFACT_FOLDER} -e Scan_Report_Folder=${ARTIFACT_FOLDER} -e AppName=${APP_NAME} -e BuildNo=${CI_PIPELINE_IID} -e Code_Branch=${CODE_BRANCH} -e Code_Commit_Hash=${CODE_COMMIT_HASH} -e Code_Commit_User=${GITLAB_USER_EMAIL:-Manul_Trigger} -e Pipeline_URL=${CI_PIPELINE_URL} -v /var/run/docker.sock:/var/run/docker.sock --group-add 0 ${SECSCAN_REGISTRY_IMAGE}:${SECURITY_SCAN_IMAGE_VERSION} /bin/sh -c '/app/generate_html.sh && python /app/mailsender.py'"
+    - echo "Exec:${DOCKER_CMD}"
+    - eval "${DOCKER_CMD}"
+    - echo "Security report is sent to ${GITLAB_USER_EMAIL}"

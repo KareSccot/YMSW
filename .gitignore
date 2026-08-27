@@ -1,0 +1,3 @@
+# Ignore .git directories of sub-repos
+**/.git/
+**/.git/***.mp4

@@ -1,0 +1,66 @@
+# ariba 组前端 workflow 预设层（team-cicd / feat/ariba 分支）
+# 跟 ariba/backend-workflow.yml 并列，供 ariba 组前端项目 include。
+# 只塞 ariba 前端的团队默认值；job 逻辑全在底层 cicd-template。
+# ariba 前端项目（如 ariba-srmp-ui）在自己的 .gitlab-ci.yml 里 include 这份，
+# 再按需 override 个别值即可，不必重复写 build/container/deploy 全套。
+
+include:
+  - project: 'devops/cicd-template'
+    ref: feat/enhance_gradle
+    file: '/workflows/app-workflow.yml'
+
+# ariba 前端走 ArgoCD（K8s GitOps），不走 VM Docker。
+# feat/enhance_gradle 这支没有 docker-deploy 层，正好适配；不必像后端那样设 DEPLOY_CONTAINER=false。
+variables:
+  SERVICE_REPOSITORY: "ariba"          # TCR 命名空间占位，实际值 push 前跟 ariba Maintainer 确认
+  IMAGE_NAME: "${CI_PROJECT_NAME}"
+  TEAM: "ariba"                         # ArgoCD deploy job 用它拼 app-values/<env>/<TEAM>/<service>/... 路径，真部署前确认
+
+# build-app：ariba 前端用 node18 + yarn + vite（产物 dist/），不是后端的 JDK+Maven+build/libs
+build-app:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/node18_npm9.8.1:1.0.0
+  variables:
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: "dist"             # vite 默认产物路径
+  script:
+    - cd $BUILD_FOLDER
+    - node -v && npm -v
+    - corepack enable || npm install -g yarn@1.22.22   # node18 镜像不一定自带 yarn，corepack 激活 package.json 声明的版本，兜底全局装
+    - yarn install
+    # 按分支选构建环境：dev→test、UAT→uat、Master→prod
+    # MR 触发时 $CI_COMMIT_BRANCH 为空（MR pipeline 跑在 merge-request ref 上），走 else 跑 build:test
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "UAT" ]; then
+        yarn build:uat
+      elif [ "$CI_COMMIT_BRANCH" = "Master" ] || [ "$CI_COMMIT_BRANCH" = "master" ]; then
+        yarn build:prod
+      else
+        yarn build:test
+      fi
+  artifacts:
+    # 显式声明 artifacts——没设 BUILD_TOOL=pnpm，模板的 pnpm artifacts 不会 include 进来
+    paths:
+      - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/"
+
+# build-container：把 dist/ 打成 nginx 镜像推 TCR。前端容器跑 HTTP 80（SSL 终止在 K8s Ingress）
+build-container:
+  variables:
+    DOCKER_BUILD_PATH: '.'
+    SERVICE_PORT: 80
+    DOCKER_BUILD_ARGS: "--build-arg SERVICE_PORT=${SERVICE_PORT}"
+
+# deploy-dev 关掉（跟 ariba 组后端惯例一致；dev 只做 build+推镜像，不自动部署）
+deploy-dev:
+  rules:
+    - when: never
+
+# 安全扫描（security-scan）不 override——让它按 cicd-template 默认规则跑（dev push + MR 时跑），最合规。
+# 注意：feat/enhance_gradle 这链的安全 job 叫 security-scan，不是后端那套 DockerScan/SCA 名字，
+# 拿后端名 override 在这链里是空操作。真要跑扫描需 AppSec 配 SAST/SCA 变量（Maintainer 动作）。
+
+default:
+  tags:
+    - tencent
+    - mno
+    - shared
+    - platform    # ariba 组 runner tags，跟 ariba/backend-workflow.yml 一致

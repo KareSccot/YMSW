@@ -1,0 +1,8 @@
+app:
+  env: uat
+env:
+  POSTGRES_PASSWD: xx
+  POSTGRES_URL: xx
+  POSTGRES_USER: xx
+image:
+  tag: dev-95100

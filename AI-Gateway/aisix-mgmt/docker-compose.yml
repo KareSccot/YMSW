@@ -1,0 +1,129 @@
+# ============================================================
+# Docker Compose — AI Gateway 用户入驻服务 (Flask REST API)
+# ============================================================
+#
+# 前置条件:
+#   1. 复制 .env.example 为 .env 并填写实际值
+#      cp .env.example .env
+#   2. 确保 .env 中敏感信息已正确配置
+#
+# 常用命令:
+#   docker-compose up -d              # 后台启动
+#   docker-compose up -d --build      # 重新构建并启动
+#   docker-compose logs -f            # 查看日志
+#   docker-compose logs -f onboarding # 查看指定服务日志
+#   docker-compose down               # 停止并删除容器
+#   docker-compose restart            # 重启服务
+#   docker-compose ps                 # 查看服务状态
+#   docker-compose exec onboarding sh # 进入容器
+#
+# 验证 (HTTP):
+#   curl http://localhost:5000/api/v1/health
+#
+# 验证 (HTTPS):
+#   curl -k https://localhost:8443/api/v1/health
+# ============================================================
+
+version: "3.9"
+
+services:
+  # ── AI Gateway 用户入驻服务 ──────────────────────────────
+  onboarding:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-gateway-onboarding:latest
+    container_name: ai-gateway-onboarding
+
+    # 端口映射（HTTP 5000 + HTTPS 8443）
+    ports:
+      - "${PORT:-5000}:5000"
+      - "${HTTPS_PORT:-8443}:8443"
+
+    # 环境变量（敏感信息通过 .env 文件注入）
+    environment:
+      # ── JWT 认证 ──
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY 必须设置}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
+
+      # ── 客户端凭证（格式: client_id:secret,client_id:secret）──
+      - CLIENT_CREDENTIALS=${CLIENT_CREDENTIALS:?CLIENT_CREDENTIALS 必须设置}
+
+      # ── AI Gateway 后端 ──
+      - AI_GATEWAY_BASE_URL=${AI_GATEWAY_BASE_URL:-https://aisix-poc.apiseven.com}
+      - AI_GATEWAY_TOKEN=${AI_GATEWAY_TOKEN:?AI_GATEWAY_TOKEN 必须设置}
+      - AI_GATEWAY_ENV_ID=${AI_GATEWAY_ENV_ID:-e7fd60b3-bbd8-4058-9b25-4b6d84eaa084}
+      - AI_GATEWAY_ORG_SLUG=${AI_GATEWAY_ORG_SLUG:-wuxibiologics}
+      - AI_GATEWAY_DEFAULT_MODELS=${AI_GATEWAY_DEFAULT_MODELS:-deepseek}
+
+      # ── 运行模式（生产环境必须关闭 DEBUG）──
+      - DEBUG=false
+      - DEV_MODE=false
+
+      # ── SSL / HTTPS（启用时需提供证书文件）──
+      - SSL_ENABLED=${SSL_ENABLED:-false}
+      - SSL_CERT_FILE=${SSL_CERT_FILE:-/app/certs/cert.pem}
+      - SSL_KEY_FILE=${SSL_KEY_FILE:-/app/certs/key.pem}
+
+      # ── 日志 ──
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=${LOG_FILE:-/app/logs/app.log}
+
+      # ── Gunicorn ──
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
+      - GUNICORN_THREADS=${GUNICORN_THREADS:-2}
+      - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+
+    # 日志 & 证书持久化
+    volumes:
+      - onboarding_logs:/app/logs
+      - ${SSL_CERT_DIR:-./certs}:/app/certs:ro
+
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-1.0}"
+          memory: "${MEMORY_LIMIT:-512M}"
+        reservations:
+          cpus: "0.25"
+          memory: "128M"
+
+    # 健康检查（始终走 HTTP 5000）
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/api/v1/health')\" || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # 重启策略
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+    # 网络
+    networks:
+      - ai-gateway-net
+
+    # 日志驱动（Docker 接管，JSON 格式，支持轮转）
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# ── 网络 ─────────────────────────────────────────────────
+networks:
+  ai-gateway-net:
+    name: ai-gateway-net
+    driver: bridge
+
+# ── 卷 ───────────────────────────────────────────────────
+volumes:
+  onboarding_logs:
+    name: ai-gateway-onboarding-logs

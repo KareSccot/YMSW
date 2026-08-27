@@ -1,0 +1,60 @@
+# Reference snapshot. Runtime source of truth: devops/app-deployments.
+app:
+  env: prod
+
+image:
+  tag: prod-$CI_PIPELINE_ID
+
+imagePullSecrets:
+  - name: ariba-mw-srmp-prod-image-pull-secret
+
+serviceAccount:
+  name: ariba-mw-srmp-prod-sa
+
+ingress:
+  enabled: true
+  className: nginx-internal
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: wuxi-aribamwprod.wuxibiologics.com
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: ariba-middleware-prod
+              port:
+                number: 9090
+  tls:
+    - hosts:
+        - wuxi-aribamwprod.wuxibiologics.com
+      secretName: ariba-mw-srmp-prod-tls-secret
+
+# nodeSelector:
+#   node-pool: ariba-mw-srmp-prod
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: node-pool
+          operator: In
+          values:
+          - ariba-mw-srmp-uat
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - "10.247.10.232"
+
+envFromSecret:
+  enabled: true
+  name: ariba-mw-srmp-prod-credentials
+
+env:
+  SPRING_PROFILES_ACTIVE: "prod"

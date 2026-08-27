@@ -1,0 +1,6 @@
+# ariba/ariba-srmp-ui 的 .gitlab-ci.yml
+# include ariba 组级前端 workflow（team-cicd feat/ariba 分支）
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/ariba
+    file: '/ariba/frontend-workflow.yml'

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "PowerShell(pip install *)",
+      "Bash(python -c \"import fastmcp; help\\(fastmcp.FastMCP\\)\")",
+      "Bash(python *)",
+      "Bash(pip show *)",
+      "PowerShell(& \"C:\\\\Users\\\\zhu.wenyong\\\\OneDrive - WuXi Biologics\\(Shanghai\\)Co.,Ltd\\\\文档\\\\trae_projects\\\\gitlab_mcp\\\\.venv\\\\Scripts\\\\python.exe\" -c \"from fastmcp import FastMCP; print\\('OK'\\); print\\(type\\(FastMCP\\)\\)\")",
+      "PowerShell(& \"C:\\\\Users\\\\zhu.wenyong\\\\OneDrive - WuXi Biologics\\(Shanghai\\)Co.,Ltd\\\\文档\\\\trae_projects\\\\gitlab_mcp\\\\.venv\\\\Scripts\\\\pip.exe\" show fastmcp 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\zhu.wenyong\\\\OneDrive - WuXi Biologics\\(Shanghai\\)Co.,Ltd\\\\文档\\\\trae_projects\\\\gitlab_mcp\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import fastmcp; print\\(fastmcp.__version__\\)\")",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\zhu.wenyong\\\\.claude\\\\ai-gateway\" -Directory -Recurse -Filter \"__pycache__\" | ForEach-Object { $_.FullName })",
+      "Bash(echo \"exit: $?\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5000\")",
+      "Bash(taskkill /PID 11740 /F)",
+      "Bash(curl -s -X POST http://localhost:5000/api/v1/auth/token -H \"Content-Type: application/json\" -d '{\"client_id\":\"admin\",\"client_secret\":\"admin123\"}')",
+      "Bash(findstr \"LISTENING\")",
+      "PowerShell(Get-Process *)",
+      "PowerShell($pids = \\(Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue\\).OwningProcess | Sort-Object -Unique; foreach \\($pid in $pids\\) { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; Write-Output \"Killed PID $pid\" }; Write-Output \"Done\")",
+      "Bash(curl *)",
+      "PowerShell(python -m pytest tests/ -v --tb=short 2>&1)",
+      "PowerShell(python -m pytest tests/ -v --tb=short -p no:readline 2>&1)",
+      "Bash(env -u JWT_SECRET_KEY -u JWT_SECRET_KEY_FILE -u AI_GATEWAY_TOKEN -u AI_GATEWAY_BASE_URL -u AI_GATEWAY_ENV_ID python -c \"import config; print\\('config import OK, token=', repr\\(config.config.AI_GATEWAY_TOKEN\\)\\)\")",
+      "Bash(env -u JWT_SECRET_KEY -u JWT_SECRET_KEY_FILE -u AI_GATEWAY_TOKEN -u AI_GATEWAY_BASE_URL -u AI_GATEWAY_ENV_ID python -c ' *)",
+      "Bash(env -u JWT_SECRET_KEY -u JWT_SECRET_KEY_FILE -u AI_GATEWAY_TOKEN python -c ' *)",
+      "Bash(env -u JWT_SECRET_KEY -u JWT_SECRET_KEY_FILE -u AI_GATEWAY_TOKEN python create-user-pipeline.py --employee-id E001 --email a@b.com --primary-dept X --secondary-dept Y --user-name Z)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

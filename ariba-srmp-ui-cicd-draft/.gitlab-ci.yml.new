@@ -1,0 +1,18 @@
+# ariba/ariba-srmp-ui 的 .gitlab-ci.yml
+# include ariba 组前端 workflow 预设层（team-cicd feat/ariba 分支），团队默认值已在那份文件里固化。
+# 本文件只保留项目级 override——跟预设不同的才写，相同的全由 ariba/frontend-workflow.yml 兜底。
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/ariba
+    file: '/ariba/frontend-workflow.yml'
+
+# 项目级变量：ariba/frontend-workflow.yml 里已设 SERVICE_REPOSITORY/IMAGE_NAME/TEAM 的 ariba 组默认值。
+# 这里只在项目有特殊值时才 override；ariba-srmp-ui 目前没有要改的，留空即可。
+# variables:
+#   SERVICE_REPOSITORY: "..."   # 如 TCR 命名空间与组默认不同，在此覆盖
+#   TEAM: "..."                 # 如 ArgoCD team 名与组默认不同，在此覆盖
+
+# build-app / build-container / deploy-dev / security-scan 的 ariba 前端默认值
+# 全在 ariba/frontend-workflow.yml 里（node18+yarn+dist / 80 端口 / deploy-dev never / security-scan 默认跑）。
+# 本项目无额外 override 需求时不重复声明，避免预设层改了这里没跟着改的漂移。

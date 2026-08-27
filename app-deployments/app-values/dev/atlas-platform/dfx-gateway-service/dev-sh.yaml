@@ -1,0 +1,31 @@
+app:
+  env: dev
+env:
+  POSTGRES_PASSWD: xx
+  POSTGRES_URL: xx
+  POSTGRES_USER: xx
+  SPRING_PROFILES_ACTIVE: dev
+image:
+  tag: dev-98864
+ingress:
+  hosts:
+  - host: dev.dfx-sciwriter.wuxibiologics.com
+    paths:
+    - backend:
+        service:
+          name: dfx-gateway-service-dev
+          port:
+            number: 80
+      path: /api
+      pathType: Prefix
+    - backend:
+        service:
+          name: dfx-frontend-dev
+          port:
+            number: 80
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - dev.dfx-sciwriter.wuxibiologics.com
+    secretName: dfx-sciwriter-tls-cert

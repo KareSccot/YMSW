@@ -1,0 +1,23 @@
+app:
+  env: dev
+env:
+  DB_HOST: 10.247.26.72:3306
+image:
+  tag: master-137321
+ingress:
+  hosts:
+  - host: aisix-mgmt-dev.wuxibiologics.com
+    paths:
+    - backend:
+        service:
+          name: aisix-mgmt-dev
+          port:
+            number: 80
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - aisix-mgmt-dev.wuxibiologics.com
+    secretName: aisix-mgmt-tls-cert
+  className: nginx
+replicaCount: 1

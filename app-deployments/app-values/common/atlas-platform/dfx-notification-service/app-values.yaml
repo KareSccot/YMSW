@@ -1,0 +1,26 @@
+app:
+  name: dfx-notification-service
+
+image:
+  namespace: atlas
+  repository: dfx-notification-service
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: dfx-sciwriter-image-pull-secret
+
+pod:
+  port: 8082
+
+livenessProbe:
+  tcpSocket:
+    port: 8082
+  initialDelaySeconds: 90
+  periodSeconds: 10
+  failureThreshold: 3
+readinessProbe:
+  tcpSocket:
+    port: 8081
+  initialDelaySeconds: 30
+  periodSeconds: 5
+  failureThreshold: 3

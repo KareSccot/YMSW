@@ -1,0 +1,41 @@
+# Different conditions stay here
+# - "rules" is used to control when the job will appear
+#   - https://docs.gitlab.com/ci/yaml/#rules
+# - "when" is not put here in most of the conditions
+#   - it's preferred to be added at job level under stages folder
+#   - thus similar conditions for appearance can be reused, but exection can be different
+
+.conditions_for_docker:
+  rules:
+    - if: '$BUILD_CONTAINER != "true"'
+      when: never
+
+.conditions_for_branch_push:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH
+
+.conditions_for_merge_requests:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+.conditions_for_uat:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.conditions_for_tags:
+  rules:
+    - if: $CI_COMMIT_TAG
+
+.conditions_for_schedules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+.rules_if_file_changes:
+  rules:
+    - changes:
+        - "package.json"
+        - "yarn.lock"
+      when: manual
+      allow_failure: false

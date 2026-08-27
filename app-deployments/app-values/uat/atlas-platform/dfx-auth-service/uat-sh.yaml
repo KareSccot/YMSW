@@ -1,0 +1,11 @@
+app:
+  env: uat
+
+image:
+  tag: dev
+
+env:
+  SPRING_PROFILES_ACTIVE: uat
+  POSTGRES_URL: xx
+  POSTGRES_USER: xx
+  POSTGRES_PASSWD: xx

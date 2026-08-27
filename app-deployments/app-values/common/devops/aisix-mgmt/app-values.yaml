@@ -1,0 +1,26 @@
+app:
+  name: aisix-mgmt
+
+replicaCount: 2
+
+image:
+  namespace: devops
+  repository: aisix-mgmt
+
+imagePullSecrets:
+  - name: devops-image-pull-secret
+
+pod:
+  port: 5000
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "false"
+  className: nginx-internal
+
+envFromSecret:
+  enabled: true
+  name: aisix-mgmt-credentials

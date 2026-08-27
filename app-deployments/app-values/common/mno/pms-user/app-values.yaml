@@ -1,0 +1,9 @@
+app:
+  name: pms-user
+
+image:
+  namespace: mno
+  repository: pms-user
+
+imagePullSecrets:
+  - name: mno-image-pull-secret

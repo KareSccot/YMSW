@@ -1,0 +1,9 @@
+app:
+  env: dev
+env:
+  POSTGRES_PASSWD: xx
+  POSTGRES_URL: xx
+  POSTGRES_USER: xx
+  SPRING_PROFILES_ACTIVE: dev
+image:
+  tag: dev-98754

@@ -1,0 +1,60 @@
+# Default values for opa-service chart.
+# OPA is a public Docker Hub image (openpolicyagent/opa), so unlike the shared
+# app-chart there is no registry/namespace/imagePullSecret. OPA is also a
+# ClusterIP-only policy decision service: no ingress/hpa/pvc/configmap.
+app:
+  name: opa
+  env: dev
+
+replicaCount: 1
+
+image:
+  repository: openpolicyagent/opa
+  tag: "1.19.1"
+  pullPolicy: IfNotPresent
+
+# OPA startup command. OPA does not read these from values today, but keeping
+# the addr here makes it discoverable; the template renders them as container args.
+opa:
+  addr: "0.0.0.0:8181"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8181
+
+pod:
+  port: 8181
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+affinity: {}
+tolerations: []

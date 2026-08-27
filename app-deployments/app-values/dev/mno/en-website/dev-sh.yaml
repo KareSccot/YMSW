@@ -1,0 +1,29 @@
+app:
+  env: dev
+env:
+  DB_HOST: 10.247.26.72:3306
+  DB_NAME: db_yaoming_en
+  DB_USER: root
+  WP_HOME: https://en-dev.wuxibiologics.com
+  WP_SITEURL: https://en-dev.wuxibiologics.com
+image:
+  tag: dev-146916
+ingress:
+  className: nginx-external
+  hosts:
+  - host: en-dev.wuxibiologics.com
+    paths:
+    - backend:
+        service:
+          name: en-website-dev
+          port:
+            number: 80
+      path: /
+      pathType: Prefix
+  tls:
+  - hosts:
+    - en-dev.wuxibiologics.com
+    secretName: en-website-tls-cert
+pod:
+  port: 8443
+replicaCount: 1

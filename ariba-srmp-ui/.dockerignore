@@ -1,0 +1,15 @@
+# 排除不需要的文件，减小构建上下文
+# dist/ 不能排除 — Dockerfile 要 COPY dist/
+
+node_modules/
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+.gitlab-ci.yml
+vite.config.ts
+tsconfig*.json

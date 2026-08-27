@@ -1,0 +1,22 @@
+include:
+  - local: jobs/approval/release-approval.yml
+  - local: jobs/approval/appsec-approval.yml
+  - local: rules/release-rules.yml
+
+approval:
+  stage: approval
+  when: manual
+  allow_failure: false
+  dependencies:
+    - set-release-manager
+  extends:
+    - .approval
+    - .release_rules
+
+appsec_approval:
+  stage: approval
+  when: manual
+  allow_failure: false
+  extends:
+    - .appsec_approval
+    - .release_rules

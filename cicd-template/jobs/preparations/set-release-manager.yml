@@ -1,0 +1,7 @@
+# log the people who created the release as release manager
+.set_release_manager:
+  script:
+    - echo "RELEASE_MANAGER=$GITLAB_USER_EMAIL" >> release_variables.txt
+  artifacts:
+    paths:
+      - release_variables.txt

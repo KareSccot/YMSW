@@ -1,0 +1,20 @@
+include:
+  - local: jobs/build/common-build.yml
+  - local: stages/gradle-build.yml
+    rules:
+      - if: $BUILD_TOOL == "gradle"
+  - local: '/stages/mvn-build.yml'
+    rules:
+      - if: $BUILD_TOOL == "mvn"
+  - local: stages/pnpm-build.yml
+    rules:
+      - if: $BUILD_TOOL == "pnpm"
+  - local: rules/dev-fix-rules.yml
+
+build-app:
+  stage: build
+  variables:
+    ENV: dev
+  extends:
+    - .default_dev_fix_rules
+    - .build

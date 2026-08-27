@@ -1,0 +1,30 @@
+include:
+  - project: 'devops/team-cicd'
+    ref: 'feat/ariba'
+    file: '/ariba/backend-workflow.yml'
+
+variables:
+  SERVICE_NAME: "ariba-srmp-server"
+  BUILD_CONTAINER: "true"
+  BUILD_TOOL: "mvn"
+
+# =============================================================================
+# build-app: Maven 单模块构建，模板驱动（BUILD_TOOL=mvn 触发模板 mvn-build 脚本）
+# pom.xml 无 profile，MVN_OPTS 仅跳过测试；产物 target/app.jar
+# =============================================================================
+build-app:
+  variables:
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: "target"
+    MVN_OPTS: "-Dmaven.test.skip=true"
+
+# =============================================================================
+# build-container: Docker 镜像构建，模板驱动；本项目端口 55100
+# =============================================================================
+build-container:
+  variables:
+    BUILD_FOLDER: "."
+    ARTIFACT_FOLDER: "target"
+    SERVICE_PORT: "55100"
+    PACKAGE_NAME: ${IMAGE_NAME}
+    DOCKER_BUILD_ARGS: "--build-arg BUILD_FOLDER=${BUILD_FOLDER} --build-arg ARTIFACT_FOLDER=${ARTIFACT_FOLDER} --build-arg PACKAGE_NAME=${PACKAGE_NAME} --build-arg SERVICE_PORT=${SERVICE_PORT}"

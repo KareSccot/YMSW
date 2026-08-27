@@ -1,0 +1,27 @@
+
+.deploy:
+  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/cd-util:feat-python
+  variables:
+    GITLAB_SERVICE_ENDPOINT: "https://gitlab-management-uat.wuxibiologics.com"
+    # https://gitspace.wuxibiologics.com/devops/app-deployments
+    GITOPS_REPO_ID: "1005"
+    GITOPS_REPO_BRANCH: "master"
+    TEAM: "change_me"
+    SERVICE_NAME: ${CI_PROJECT_NAME}
+    ENV: change_me
+    REGION: "sh"
+    # this value shall be matching with default docker build image tag in jobs/build/docekr.yml
+    DEPLOYMENT_VERSION: $CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID
+  script:
+    - echo "Deploying ${SERVICE_NAME} of ${TEAM} team in ${ENV}-${REGION} in branch ${GITOPS_REPO_BRANCH} with version ${DEPLOYMENT_VERSION}.."
+    - sleep ${SLEEP_TIME:-1}
+    - set -ex
+    - |
+      curl -k -X POST ${GITLAB_SERVICE_ENDPOINT}/api/argocd/${GITOPS_REPO_ID}/update-version   -H "Content-Type: application/json"   -d @- <<EOF
+      {
+        "file_path": "app-values/${ENV}/${TEAM}/${SERVICE_NAME}/${ENV}-${REGION}.yaml",
+        "new_version": "${DEPLOYMENT_VERSION}",
+        "branch": "${GITOPS_REPO_BRANCH}",
+        "commit_message": "[Gitlab CI]: ${GITLAB_USER_EMAIL} updating ${SERVICE_NAME} version for ${ENV}-${REGION}"
+      }
+      EOF

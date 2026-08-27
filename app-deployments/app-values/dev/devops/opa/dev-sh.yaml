@@ -1,0 +1,10 @@
+# OPA dev-sh environment override
+# Path: app-values/dev/devops/opa/dev-sh.yaml
+# region: sh (Shanghai)
+app:
+  env: dev
+
+image:
+  tag: "1.19.1"
+
+replicaCount: 1
