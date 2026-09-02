@@ -1,0 +1,85 @@
+# cicd-services.yml
+# ========================================
+# 多服务 mono-repo 的服务清单。/cicd-init-repo 读此文件生成 .gitlab-ci.yml + ci/<service>.yml。
+#
+# 填写步骤：
+#   1. 按下面注释填好 project: 共用配置
+#   2. 按下面注释填好 services: 列表里的每个服务
+#   3. 回到对话告诉 skill "done"，它会读这个文件然后生成所有 CI 文件
+#
+# 镜像 tag 实际值：到 TCR 控制台 / base-image-builder 流水线日志查；
+# 现有镜像清单 + 新增方法见  ~/.claude/skills/cicd-init-repo/references/base-image-catalog.md
+# 如果你需要的镜像 catalog 没有，先去 base-image-builder 仓库按那份文档第 § B 节加好再回来填这里
+# ========================================
+
+project:
+  # 项目前缀，用于 .gitlab-ci.yml 里的 base job 命名（如 .myproj-mvn-build、.myproj-build-docker）
+  prefix: <my-project>
+
+  # 共用编译环境镜像（base-image-builder 出的 build env），按语言区分
+  # 没用到的语言可以删除对应行
+  build_images:
+    mvn:    "<DOCKER_REGISTRY>/devops/jdk11.0.16_mvn3.0.5:<TAG>"
+    gradle: "<DOCKER_REGISTRY>/devops/jdk21_with_gradle_mvn:<TAG>"
+    npm:    "<DOCKER_REGISTRY>/devops/node18_npm9.8.1:<TAG>"
+
+# 服务清单 —— 每个服务一项
+# 字段说明：
+#   name             — service 名（用作 IMAGE_NAME 和 job 名前缀，例 pms-core 会生成 pms-core-app + pms-core-container）
+#   language         — java-mvn / java-gradle / node-npm / node-pnpm
+#                      决定用哪个 build_images 里的镜像，以及 build 脚本（mvn package / npm run build）
+#   build_folder     — mvn 是含 pom.xml 的目录；npm 是含 package.json 的目录
+#   artifact_folder  — 构建产物相对路径（mvn: target；npm: dist）
+#   dockerfile       — 用哪个 Dockerfile（多 service 可共用，例 Dockerfile_backend 同时给 3 个 Java service 用）
+#   base_image       — 运行时镜像（Dockerfile FROM）；Java 用 base-image-builder jre；前端用 nginx；其它见 catalog
+#   service_port     — 容器对外端口
+#   java_opts        — 可选，仅 Java 用，JVM 参数
+
+services:
+  # ↓ 这是一个例子，按你的项目改并复制成 N 份
+  - name: <svc-1>
+    language: java-mvn
+    build_folder: ./<service-dir>
+    artifact_folder: target
+    dockerfile: Dockerfile_backend
+    base_image: "<DOCKER_REGISTRY>/devops/jre11.0.16:<TAG>"
+    service_port: 8080
+    # java_opts: "-Xms2g -Xmx4g"
+    # serves_https: false              # 默认 false（容器跑 HTTP，上游 LB 终止 SSL）；设 true 时该 service 需要配 *_SSL_CERT/KEY
+
+  - name: <svc-2>
+    language: node-npm
+    build_folder: ./<frontend-dir>
+    artifact_folder: dist
+    dockerfile: Dockerfile_frontend
+    base_image: "nginx:1.29.4-alpine"
+    service_port: 443
+    serves_https: true                 # nginx 容器跑 443 → 需要 SSL 证书
+
+# 部署拓扑 —— 可选，**只有要部署到多台 VM 做负载均衡时才填**（PMS 那种 master/slave）
+# 不填 = 走默认单机部署（team-cicd 的 deploy-container-uat/prod，每环境一台）。
+# 填了 = skill 生成 ci/deploy-nodes.yml，每个节点一对 job，禁用默认单机部署。
+# 多节点负载均衡部署超出本 skill 范围，填了 deploy: 段后转交平台工程师处理
+#
+# 每个 node 字段：
+#   name          节点名（job 名用，如 master → prod-master-pre / prod-master）
+#   target_var    该节点 SSH target 的 GitLab 变量名，值形如 user@host:/deploy/path
+#   compose_file  该节点独立的 compose 文件（节点可非对称，各跑各的 service 子集）
+#   nginx_conf    该节点独立的 nginx.conf 仓库内路径
+# deploy:
+#   uat:                                   # UAT 通常单节点
+#     nodes:
+#       - name: single
+#         target_var: UAT_TARGET
+#         compose_file: docker-compose-uat.yml
+#         nginx_conf: config/nginx/nginx-uat.conf
+#   prod:                                  # PROD 多节点负载均衡
+#     nodes:
+#       - name: master
+#         target_var: PROD_MASTER_TARGET
+#         compose_file: docker-compose-master.yml
+#         nginx_conf: config/nginx/nginx-prod-master.conf
+#       - name: slave
+#         target_var: PROD_SLAVE_TARGET
+#         compose_file: docker-compose-slave.yml
+#         nginx_conf: config/nginx/nginx-prod-slave.conf

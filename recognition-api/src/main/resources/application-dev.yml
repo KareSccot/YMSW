@@ -1,0 +1,63 @@
+server:
+  port: ${DEV_SERVER_PORT:${SERVER_PORT:8080}}
+  servlet:
+    context-path: ${DEV_SERVER_CONTEXT_PATH:${SERVER_CONTEXT_PATH:/}}
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DEV_MYSQL_URL:${MYSQL_URL:jdbc:mysql://127.0.0.1:13306/employee_care_dev?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}}
+    username: ${DEV_MYSQL_USERNAME:${MYSQL_USERNAME:root}}
+    password: ${DEV_MYSQL_PASSWORD}
+    hikari:
+      minimum-idle: ${DEV_DB_MIN_IDLE:${DB_MIN_IDLE:5}}
+      maximum-pool-size: ${DEV_DB_MAX_POOL_SIZE:${DB_MAX_POOL_SIZE:20}}
+      idle-timeout: 300000
+      max-lifetime: 600000
+      connection-timeout: 30000
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  mail:
+    host: ${DEV_SMTP_HOST:${SMTP_HOST:smtp.example.com}}
+    port: ${DEV_SMTP_PORT:${SMTP_PORT:465}}
+    username: ${DEV_SMTP_USERNAME:${SMTP_USERNAME:noreply@example.com}}
+    password: ${DEV_SMTP_PASSWORD:${SMTP_PASSWORD:}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: assign_id
+  type-aliases-package: com.wuxibio.care.entity
+
+app:
+  jwt:
+    secret: ${DEV_JWT_SECRET}
+    access-expiration-ms: ${DEV_JWT_ACCESS_EXPIRATION_MS:${JWT_ACCESS_EXPIRATION_MS:7200000}}
+    refresh-expiration-ms: ${DEV_JWT_REFRESH_EXPIRATION_MS:${JWT_REFRESH_EXPIRATION_MS:604800000}}
+  base-url: ${DEV_APP_BASE_URL:${APP_BASE_URL:http://localhost:8080}}
+  approval-page-url: ${DEV_APPROVAL_PAGE_URL:${APPROVAL_PAGE_URL:http://localhost:5173/approvals}}
+  template-assets:
+    image-dir: ${DEV_TEMPLATE_IMAGE_DIR:${TEMPLATE_IMAGE_DIR:/Users/yaoshuteng/Desktop/BIO/work/RecognitionPlatform/assets/uploads}}
+  cors:
+    allowed-origins: ${DEV_CORS_ALLOWED_ORIGINS:${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}}

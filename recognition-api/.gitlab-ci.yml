@@ -1,0 +1,57 @@
+# Company CICD for recognition-api as an independent GitLab project.
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/isrm-appsec
+    file: '/sdlcapi/backend-workflow.yml'
+
+variables:
+  SERVICE_NAME: "recognition-api"
+  DOCKER_REGISTRY: "<DOCKER_REGISTRY>"
+  SERVICE_REPOSITORY: "<SERVICE_REPOSITORY>"
+  API_BUILD_IMAGE: "<DOCKER_REGISTRY>/devops/<jdk17-maven-build-image>:<TAG>"
+  API_RUNTIME_BASE_IMAGE: "<DOCKER_REGISTRY>/devops/<jre17-runtime-image>:<TAG>"
+  BUILD_TOOL: "mvn"
+  BUILD_ENV: "uat"
+
+build-app:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  image: "$API_BUILD_IMAGE"
+  script:
+    - mvn -Dmaven.test.skip=true clean package
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - "target/*.jar"
+
+build-container:
+  needs:
+    - job: build-app
+      artifacts: true
+  variables:
+    DOCKERFILE_NAME: "Dockerfile.cicd"
+    DOCKER_BUILD_ARGS: >
+      --build-arg BASE_IMAGE=$API_RUNTIME_BASE_IMAGE
+      --build-arg ARTIFACT_FOLDER=target
+      --build-arg PACKAGE_NAME=recognition-api
+      --build-arg SERVICE_PORT=8088
+
+# VM Docker deployment only. deploy-uat/deploy-prod are ArgoCD jobs.
+deploy-uat:
+  rules:
+    - when: never
+
+deploy-prod:
+  rules:
+    - when: never
+
+# Current deployment mode: UAT only.
+# Remove this override only after PROD_* variables and PROD runtime profile are ready.
+deploy-container-prod:
+  rules:
+    - when: never
+
+# Compliance jobs must remain enabled:
+# DockerScan, SCA, GenSecurityReport, approval, appsec_approval, set-release-manager.

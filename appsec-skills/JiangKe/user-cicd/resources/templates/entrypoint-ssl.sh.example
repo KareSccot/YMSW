@@ -1,0 +1,42 @@
+#!/bin/bash
+# entrypoint-ssl.sh —— SSL 证书权限修复 + 切换非 root 用户启动
+#
+# 用途：解决 cicd-template 部署脚本把 SSL cert/key scp 到 host 时是 root:600，
+#       容器内 appuser bind mount 进来读不了的问题。
+#
+# 工作流程：
+#   1. 容器以 root 启动（Dockerfile 末尾不写 USER appuser，由本脚本切换）
+#   2. 本脚本以 root 跑：chmod 调整 SSL 文件权限给 appuser
+#   3. exec gosu appuser <实际启动命令>  → 切换为非 root 跑服务
+#
+# 配套 Dockerfile：
+#   RUN apt-get install -y gosu        # alpine 用 apk add su-exec
+#   COPY entrypoint-ssl.sh /usr/local/bin/entrypoint.sh
+#   RUN chmod +x /usr/local/bin/entrypoint.sh
+#   ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+#   CMD ["python", "main.py"]   # 或你的实际启动命令
+#
+# 详见 references/ssl-cert.md § F
+
+set -e
+
+CERT_FILE="/etc/ssl/server.crt"
+KEY_FILE="/etc/ssl/server.key"
+APP_USER="${APP_USER:-appuser}"
+
+# 检测 SSL 证书是否存在且非空
+# （部署脚本无条件 scp SSL 文件，未配置 *_SSL_CERT/KEY 时会是空文件）
+if [ -s "$CERT_FILE" ] && [ -s "$KEY_FILE" ]; then
+  echo "[entrypoint] SSL certs found, adjusting permissions for ${APP_USER}"
+  # 把属主切给 appuser 并设可读权限
+  chown "${APP_USER}:${APP_USER}" "$CERT_FILE" "$KEY_FILE"
+  chmod 640 "$CERT_FILE" "$KEY_FILE"
+  echo "[entrypoint] SSL certs ready, starting in HTTPS mode"
+else
+  echo "[entrypoint] SSL certs empty or missing, starting in HTTP mode"
+fi
+
+# 切换到非 root 用户后 exec 实际命令
+# gosu 比 sudo 轻量、不产生新进程包装、信号转发正确
+# Alpine 镜像用 su-exec 替换：exec su-exec "${APP_USER}" "$@"
+exec gosu "${APP_USER}" "$@"

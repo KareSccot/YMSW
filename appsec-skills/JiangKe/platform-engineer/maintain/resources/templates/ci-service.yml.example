@@ -1,0 +1,55 @@
+# ci/<service>.yml —— 单个 service 的 CI 定义
+#
+# 引用项目级的 .gitlab-ci.yml 里定义的 base job：
+#   .<PREFIX>-mvn-build / .<PREFIX>-npm-build → 编译产 artifact
+#   .<PREFIX>-build-docker                    → docker build + push 镜像
+#
+# 占位符（由 /cicd-init-repo 根据 cicd-services.yml 填）：
+#   <PREFIX>           = project.prefix
+#   <SVC>              = services[N].name
+#   <LANG>             = mvn / gradle / npm
+#   <BUILD_FOLDER>     = services[N].build_folder
+#   <ARTIFACT_FOLDER>  = services[N].artifact_folder
+#   <DOCKERFILE>       = services[N].dockerfile
+#   <BASE_IMAGE>       = services[N].base_image
+#   <SERVICE_PORT>     = services[N].service_port
+#   <JAVA_OPTS>        = services[N].java_opts（可选，仅 Java）
+
+# ---- 编译 ----
+<SVC>-app:
+  extends:
+    - .<PREFIX>-<LANG>-build      # 例 .myproj-mvn-build / .myproj-npm-build
+  variables:
+    BUILD_FOLDER: <BUILD_FOLDER>
+    ARTIFACT_FOLDER: <ARTIFACT_FOLDER>
+
+# ---- Docker build + push ----
+<SVC>-container:
+  extends:
+    - .<PREFIX>-build-docker
+  variables:
+    BUILD_FOLDER: <BUILD_FOLDER>
+    ARTIFACT_FOLDER: <ARTIFACT_FOLDER>
+    IMAGE_NAME: <SVC>
+    DOCKERFILE_NAME: <DOCKERFILE>
+    DOCKER_BUILD_ARGS: >
+      --build-arg BASE_IMAGE=<BASE_IMAGE>
+      --build-arg BUILD_FOLDER=<BUILD_FOLDER>
+      --build-arg ARTIFACT_FOLDER=<ARTIFACT_FOLDER>
+      --build-arg PACKAGE_NAME=<SVC>
+      --build-arg SERVICE_PORT=<SERVICE_PORT>
+      # --build-arg JAVA_OPTS=<JAVA_OPTS>   # 取消注释（Java 才用）
+  needs:
+    - <SVC>-app
+
+# ---- 镜像安全扫描（按 service 分别扫）----
+DockerScan-<SVC>:
+  stage: security-report
+  extends:
+    - .security-scan              # 来自 team-cicd / cicd-template
+  variables:
+    TENABLE_SCANTARGET_DOCKER_REPOSITORY_URL: "${DOCKER_REGISTRY}/${SERVICE_REPOSITORY}/<SVC>:${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}"
+    SECURITY_ENABLE_BLOCK: "0"
+  needs:
+    - <SVC>-container
+  dependencies: []

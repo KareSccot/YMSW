@@ -1,0 +1,57 @@
+# docker-compose.yml —— 远端 VM 上由部署脚本 scp 过去后跑
+#
+# === 两条不能违反的约定 ===
+# 1. image 必须是 ${IMAGE_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG}
+#    这三个变量由 cicd-template/jobs/deploy/argo-rolling.yml 部署脚本 export 到远端 shell
+#      IMAGE_REGISTRY = $DOCKER_REGISTRY/$SERVICE_REPOSITORY
+#      SERVICE_NAME   = $SERVICE_NAME (来自 GitLab CI 变量)
+#      IMAGE_TAG      = $CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID
+#    硬编码 / 用别的变量名都会失败。
+#
+# 2. 所有应用机密/配置占位必须以 ${CUSTOM_*} 开头
+#    部署脚本会把所有 CUSTOM_ 前缀的 GitLab CI 变量 base64 编码透传到远端
+#    非 CUSTOM_ 前缀的变量会变成空字符串（不会报错，会静默吞掉）。
+#
+# ⚠️ 下面 environment 是 1 个示例占位 + 2 行注释参考。
+#    **按你的应用实际需要的环境变量增删** —— 不要保留你不用的，也不要凭空堆变量。
+#    每加一个变量，都要在 GitLab CI/CD Variables UI 里配一个同名的 CUSTOM_ 变量。
+
+services:
+  <SERVICE_NAME>:
+    image: ${IMAGE_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG}
+    ports:
+      # 端口映射：host port : container port —— 两边可以不同！
+      #   CUSTOM_HOST_PORT  = 用户访问的端口（如 HTTPS=443、HTTP=80、非标=8443/8088）
+      #                       docker daemon 以 root 绑定，可以是特权端口 (<1024)
+      #   CUSTOM_APP_PORT   = 容器内应用监听的端口（**永远非特权 ≥1024**，常见 8000/8080）
+      #                       appuser 绑定，绑不了 <1024
+      # 默认两边一样（兼容 HTTP-only 简单项目）；HTTPS 场景配 HOST=443, APP=8000
+      # 详见 references/ssl-cert.md § G
+      - "${CUSTOM_HOST_PORT:-8080}:${CUSTOM_APP_PORT:-8080}"
+    environment:
+      - APP_SECRET=${CUSTOM_APP_SECRET}
+      # - DB_PASSWORD=${CUSTOM_DB_PASSWORD}
+      # - API_BASE_URL=${CUSTOM_API_BASE_URL}
+    restart: unless-stopped
+    # === 数据持久化：服务有 sqlite / 上传文件 / cache 时取消注释 ===
+    # ⚠️ 必须用 host bind mount（./data 或绝对路径），**不要用 docker named volume**！
+    # 公司 cicd-template 部署脚本会跑 `docker compose down -v` 清掉所有 named volume，
+    # 而 host bind mount 的数据在 host filesystem，不受 `down -v` 影响 —— 这是 UAT/PROD
+    # SQLite/文件型数据库存活的唯一办法。详见 references/data-persistence.md。
+    #
+    # 一次性 VM 端运维（漏了容器内 appuser 写不了 host 目录，启动报 "unable to open
+    # database file"）。uid 1000 对应 Dockerfile 里 `useradd --uid 1000 appuser`：
+    #   sudo mkdir -p $DEPLOY_PATH/data
+    #   sudo chown 1000:1000 $DEPLOY_PATH/data
+    # volumes:
+    #   - ./data:/app/data
+    #
+    # === SSL 证书 mount（仅当本容器自己 terminate SSL 时取消注释）===
+    # 适用：nginx 容器跑 443、Spring Boot/uvicorn 直接监听 HTTPS。
+    # 不适用：容器只跑 HTTP（上游 LB / Ingress 终止 SSL）—— 保留注释，*_SSL_CERT/KEY 变量也可留空。
+    # 详见 references/ssl-cert.md
+    # 注：部署脚本无条件把 *_SSL_CERT/KEY 内容 scp 到 ${DEPLOY_PATH}/server.crt 和 server.key
+    # （留空时 scp 的是空文件，不报错；容器不挂载就忽略）
+    # volumes:
+    #   - ./server.crt:/etc/ssl/server.crt:ro
+    #   - ./server.key:/etc/ssl/server.key:ro

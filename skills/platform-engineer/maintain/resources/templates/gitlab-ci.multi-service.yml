@@ -1,0 +1,90 @@
+# .gitlab-ci.yml —— 多服务 mono-repo 版（PMS 风格）
+#
+# 模式：
+#   1. include team-cicd 拿到流水线骨架
+#   2. 定义本项目共用的 base job（.<prefix>-mvn-build / .<prefix>-build-docker 等）
+#   3. local include 每个 service 自己的 ci/<service>.yml（里面 extends base job + 填服务变量）
+#   4. 关掉 team-cicd 的默认 build-app / build-container（避免和自定义 service jobs 撞 stage）
+#
+# 占位符（由 /cicd-init-repo 根据 cicd-services.yml 填）：
+#   <PREFIX>           = project.prefix
+#   <MVN_BUILD_IMAGE>  = project.build_images.mvn
+#   <NPM_BUILD_IMAGE>  = project.build_images.npm
+#   <SVC-N>            = services[N].name
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/isrm-appsec
+    file: '/sdlcapi/backend-workflow.yml'
+  # 每个 service 一行 local
+  - local: 'ci/<svc-1>.yml'
+  - local: 'ci/<svc-2>.yml'
+
+# ================ 共用 base jobs ================
+
+# Java + Maven 编译 base
+.<PREFIX>-mvn-build:
+  extends: .build               # 来自 team-cicd / cicd-template
+  image: <MVN_BUILD_IMAGE>
+  stage: build
+  variables:
+    BUILD_FOLDER: 'change_me'                                  # 每个 service 覆盖
+    ARTIFACT_FOLDER: 'target'
+    MVN_OPTS: "-f ${BUILD_FOLDER}/pom.xml -Dmaven.test.skip=true clean package"
+  script:
+    - mvn package ${MVN_OPTS}
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}/*.jar"
+
+# 前端 / Node 编译 base
+.<PREFIX>-npm-build:
+  extends: .build
+  image: <NPM_BUILD_IMAGE>
+  stage: build
+  variables:
+    BUILD_FOLDER: 'change_me'
+    ARTIFACT_FOLDER: 'dist'
+  script:
+    - cd ${BUILD_FOLDER}
+    - npm config set strict-ssl false
+    - npm install && npm run build
+    - zip -r "${ARTIFACT_FOLDER}.zip" "${ARTIFACT_FOLDER}"
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - "${BUILD_FOLDER}/*.zip"
+
+# Docker build base（每个 service 覆盖 DOCKERFILE_NAME / DOCKER_BUILD_ARGS / IMAGE_NAME）
+.<PREFIX>-build-docker:
+  extends: .build-docker        # 来自 team-cicd / cicd-template (jobs/build/docker.yml)
+  stage: build
+
+# ================ 关掉默认单 service job ================
+# 多服务项目用 <svc>-app + <svc>-container 取代默认两个 job，避免同 stage 撞
+
+build-app:
+  rules:
+    - when: never
+build-container:
+  rules:
+    - when: never
+
+# ================ 禁用 ArgoCD 部署链路（只走 VM 容器部署时取消注释）================
+# ⚠️ 这里禁的是 ArgoCD job；deploy-container-uat / deploy-container-prod 是 VM 部署，不要禁
+# 注：deploy-dev 已被 team-cicd/sdlcapi 默认禁，不用再写
+# deploy-uat:
+#   rules: [{ when: never }]
+# deploy-prod:
+#   rules: [{ when: never }]
+
+# ================ UAT only：禁 prod VM 部署（按需取消注释）================
+# 如果项目阶段只到 UAT、prod 还没准备好，禁掉 deploy-container-prod 避免误触发
+# deploy-container-prod:
+#   rules: [{ when: never }]
+
+# ================ ⚠️ 红线 ================
+# 永远不要禁这些 job（安全合规要求）：
+#   DockerScan / SCA / GenSecurityReport / approval / appsec_approval / set-release-manager
+# 多服务项目通常另外加 DockerScan-<svc> per service，但不能去掉默认的 DockerScan

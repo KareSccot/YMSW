@@ -1,0 +1,31 @@
+{{- include "app-chart.validateBundle" . -}}
+{{- if .Values.bundle.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "app-chart.bundleConfigMapName" . }}
+  labels:
+    {{- include "app-chart.labels" . | nindent 4 }}
+data:
+  opa-config.yaml: |
+    services:
+      gitlab:
+        url: {{ trimSuffix "/" .Values.bundle.serviceUrl | quote }}
+        allow_insecure_tls: {{ .Values.bundle.tls.allowInsecureTls }}
+        credentials:
+          bearer:
+            scheme: Basic
+            token_path: /var/run/secrets/opa-bundle-auth/basic-auth
+        {{- if or .Values.bundle.tls.caCert .Values.bundle.tls.existingSecret.name }}
+        tls:
+          ca_cert: /etc/opa/tls/ca.crt
+          system_ca_required: true
+        {{- end }}
+    bundles:
+      policy:
+        service: gitlab
+        resource: {{ trimPrefix "/" .Values.bundle.resource | quote }}
+        polling:
+          min_delay_seconds: {{ int .Values.bundle.polling.minDelaySeconds }}
+          max_delay_seconds: {{ int .Values.bundle.polling.maxDelaySeconds }}
+{{- end }}

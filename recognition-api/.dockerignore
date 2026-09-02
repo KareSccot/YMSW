@@ -1,0 +1,12 @@
+.git
+.runtime
+logs
+
+src
+target
+!target/
+!target/*.jar
+
+*.log
+*.tmp
+.DS_Store

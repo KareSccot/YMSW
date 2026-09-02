@@ -1,0 +1,37 @@
+# 前端 SPA Dockerfile —— ArgoCD/K8s 部署路径
+#
+# 适用场景：
+#   - 前端项目（Vue/React）走 ArgoCD + K8s 部署（非 VM Docker 部署）
+#   - .gitlab-ci.yml 的 build-app job 已经把前端打包到 dist/ 目录
+#   - cicd-template 的 build-container job 不打 zip，产物是 dist/ 目录
+#
+# 与 VM Docker 路径的 Dockerfile.frontend-nginx.parameterized.example 的区别：
+#   - 用 COPY dist/ 而非 ADD dist.zip（cicd-template 不产 zip）
+#   - 不需要 docker-entrypoint.sh（K8s 里 SSL 由 ingress 层终止，不在容器内）
+#   - 端口固定 80（nginx 默认），不参数化（K8s service 管端口映射）
+#   - 不需要非 root 用户切换（K8s pod security context 在 K8s 层配）
+#
+# 配套的 .gitlab-ci.yml 片段：
+#   build-container:
+#     variables:
+#       DOCKER_BUILD_PATH: '.'
+#       SERVICE_PORT: 80
+
+FROM nginx:1.29.4-alpine
+
+# 国内源默认开（清华 Alpine），外网构建时覆盖
+ARG APK_MIRROR=mirrors.tuna.tsinghua.edu.cn
+RUN if [ -n "$APK_MIRROR" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi && apk update
+
+# 构建产物是 dist/ 目录（由 build-app job 的 ARTIFACT_FOLDER 变量指定）
+# COPY 路径跟 build-app 的 ARTIFACT_FOLDER 对齐
+COPY dist/ /usr/share/nginx/html/
+
+# 自定义 nginx 配置（SPA 回退 + 缓存策略）
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

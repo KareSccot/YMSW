@@ -1,0 +1,57 @@
+# 前端 SPA Dockerfile —— **参数化版本**（PMS 风格）
+#
+# 适用场景：
+#   - .gitlab-ci.yml 的 build-app job 已经把前端打包好（如 dist/ 目录）并 zip 成 artifact
+#   - Dockerfile 阶段只负责把静态文件解压到 nginx 的 html 目录
+#
+# 注意：
+#   - 前端运行时 base-image-builder 暂未维护，BASE_IMAGE 直接传 nginx 官方镜像（如 nginx:1.29.4-alpine）
+#   - 需要自定义 nginx 配置（HTTPS / SSL / 代理后端）时，在仓库里准备好 nginx.conf 与 docker-entrypoint.sh
+#
+# 配套的 .gitlab-ci.yml 片段：
+#   build-container:
+#     variables:
+#       DOCKERFILE_NAME: "Dockerfile_frontend"
+#       DOCKER_BUILD_ARGS: "--build-arg BASE_IMAGE=nginx:1.29.4-alpine \
+#                           --build-arg BUILD_FOLDER=./PMS_VUE \
+#                           --build-arg ARTIFACT_FOLDER=dist \
+#                           --build-arg PACKAGE_NAME=myapp-frontend \
+#                           --build-arg SERVICE_PORT=443"
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# 国内源默认开（清华 Alpine），外网构建时覆盖
+ARG APK_MIRROR=mirrors.tuna.tsinghua.edu.cn
+
+RUN if [ -n "$APK_MIRROR" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi \
+    && apk update && apk add --no-cache unzip
+
+ARG PACKAGE_NAME
+ARG BUILD_FOLDER
+ARG ARTIFACT_FOLDER
+ARG SERVICE_PORT=443
+
+# 前端 artifact 一般是 zip（build-app 的 .npm_build 会 zip dist/ → dist.zip）
+ADD ${BUILD_FOLDER}/${ARTIFACT_FOLDER}.zip /tmp/${PACKAGE_NAME}.zip
+RUN unzip /tmp/${PACKAGE_NAME}.zip -d /tmp/frontend && \
+    cp -r /tmp/frontend/${ARTIFACT_FOLDER}/* /usr/share/nginx/html/ && \
+    rm -rf /tmp/*
+
+# 自定义 nginx 启动脚本（处理 SSL / runtime env 注入等）
+COPY ${BUILD_FOLDER}/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# === 如需在 entrypoint 里调 SSL 文件权限再切非 root，安装 su-exec（alpine 版 gosu）===
+# nginx 默认以 root 跑（绑定 listen 端口），通常不切非 root，此段一般不必打开。
+# 但如果你 nginx 用了非特权端口 + 想以 nginx 用户跑、又要 mount SSL 证书 → 仿照
+# templates/entrypoint-ssl.sh.example 适配 alpine：把 gosu 换成 su-exec
+# RUN apk add --no-cache su-exec
+#
+# 详见 references/ssl-cert.md § F
+
+# 容器内监听端口（host 端给用户的端口在 docker-compose.yml 里映射）
+EXPOSE ${SERVICE_PORT}
+ENTRYPOINT ["/docker-entrypoint.sh"]

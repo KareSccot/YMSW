@@ -1,0 +1,96 @@
+# ArgoCD CD 配置 —— 通用骨架（env 无关）
+#
+# 适用场景：
+#   - 前端 SPA 项目走 ArgoCD + K8s 部署
+#   - 放在 app-deployments 仓库的 app-values/common/<team>/<app>/app-values.yaml
+#
+# 与 env 覆盖文件的关系：
+#   - 本文件定义 env 无关的骨架（镜像路径、端口、SA、安全策略、资源配额）
+#   - env 覆盖文件（app-values.env.example.yaml）只改 image.tag + replicaCount + env vars
+#
+# 前提条件（人工活，skill 不生成）：
+#   - K8s namespace 已通过工单申请
+#   - imagePullSecret 已在 namespace 里配好（找平台组/乔老师）
+#   - serviceAccount 已在 namespace 里存在（复用，不创建）
+#   - node-pool 已配好（nodeSelector 指向的节点池存在）
+
+app:
+  name: <APP_NAME>
+
+image:
+  namespace: <TEAM_NAMESPACE>
+  repository: <TEAM>/<APP_NAME>
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: <TEAM>-image-pull-secret
+
+# SA 复用 namespace 已有的，不在本 release 创建。
+# 前提：SA 必须已存在于目标 namespace。
+serviceAccount:
+  create: false
+  automount: true
+  name: <SA_NAME>
+
+pod:
+  port: 80
+
+service:
+  type: ClusterIP
+  port: 80
+
+# 前端 SPA 不直接对外暴露 ingress：
+# 对外入口由 preview release 的 ingress 统一创建，backend 指向本 release 产出的 service。
+# 如果团队没有 preview release 机制，改为 enabled: true 并配 ingress host/rules。
+ingress:
+  enabled: false
+
+livenessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 20
+readinessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+nodeSelector:
+  node-pool: <TEAM>-<ENV>
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# readOnlyRootFilesystem=true 时，nginx 需要 /tmp 和 /tmp/logs 可写
+volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: logs
+    mountPath: /tmp/logs

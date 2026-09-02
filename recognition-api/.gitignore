@@ -1,0 +1,19 @@
+.DS_Store
+.idea/
+.vscode/
+
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+target/
+uploads/
+
+*.log
+*.gz
+*.pid
+
+# Local-only Spring profile (machine-specific DB / paths). Other profiles stay tracked.
+src/main/resources/application-local.yml

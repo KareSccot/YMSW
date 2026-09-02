@@ -1,0 +1,80 @@
+# .gitlab-ci.yml —— ariba-srmp-ui 接入公司 CICD 体系（单服务 / 前端 ArgoCD）
+#
+# 项目：ariba-srmp-ui（Vue3 + Vite + TypeScript + yarn 1.x）
+# 部署：ArgoCD / K8s（不走 VM docker-compose 部署）
+# 环境：UAT only（prod 暂不接入）
+#
+# 流水线 = build-app（yarn install + yarn build:uat 产 dist/）
+#        → build-container（docker build + push 到 TCR）
+#        → deploy-uat（ArgoCD 部署，CD 侧由平台工程师在 app-deployments 仓库配置）
+#
+# 编译环境镜像引用 base-image-builder，不要自己搭。
+# 镜像清单见 references/base-image-catalog.md，tag 实际值到 TCR 控制台或 base-image-builder 流水线日志查（见 references/base-image-catalog.md §D）。
+# 流水线 job 全清单与处置见 references/cicd-template-jobs.md。
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/isrm-appsec
+    file: '/sdlcapi/backend-workflow.yml'
+
+# ============== 编译 ==============
+#
+# 本项目用 yarn 1.x（package.json 的 packageManager 指定）。
+# cicd-template 的 build-app 默认只支持 BUILD_TOOL=mvn/gradle/pnpm，不支持 yarn，
+# 因此不设 BUILD_TOOL，而是直接 re-enable build-app 并自定义 script 跑 yarn 命令。
+
+variables:
+  SERVICE_NAME: "ariba-srmp-ui"
+  # 不设 BUILD_TOOL —— yarn 走自定义 script，不走 cicd-template 的 mvn/gradle/pnpm 分支
+
+# ⚠️ team-cicd/sdlcapi 默认禁了 build-app（when: never），下面必须 re-enable + 覆盖编译镜像 + 自定义 script
+build-app:
+  rules:
+    - !reference [.default_dev_fix_rules, rules]
+  image: <DOCKER_REGISTRY>/devops/node18_npm9.8.1:<TAG>
+  # tag 到 TCR 控制台搜 node18_npm9.8.1 取最新值（形如 main-123）
+  variables:
+    BUILD_FOLDER: '.'
+    ARTIFACT_FOLDER: 'dist'
+  script:
+    - cd ${BUILD_FOLDER}
+    # yarn 项目：装依赖 + 跑 UAT 构建脚本（package.json: build:uat = VITE_NODE_ENV=uat vite build）
+    # 不用 frozen-lockfile —— 仓库未提交 yarn.lock，裸装（依赖可能漂移，后续可补 lock 加固）
+    - yarn install
+    - yarn build:uat
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - "${BUILD_FOLDER}/${ARTIFACT_FOLDER}"
+
+# ============== 容器构建 ==============
+#
+# Dockerfile 用简单模式（FROM nginx:1.29.4-alpine 写死），不需要 BASE_IMAGE build-arg。
+# build-container 把 build-app 产出的 dist/ COPY 进 nginx 镜像并 push 到 TCR。
+build-container:
+  variables:
+    DOCKER_BUILD_PATH: '.'
+    DOCKERFILE_NAME: 'Dockerfile'
+    # IMAGE_NAME 默认取 ${SERVICE_NAME}，这里不覆盖
+    # DOCKER_BUILD_ARGS 不需要 BASE_IMAGE（Dockerfile FROM 写死 nginx），保持默认
+
+# ============== 禁用 VM 容器部署链路（本项目只走 ArgoCD）==============
+# ⚠️ 这里禁的是 VM SSH+docker compose 部署 job；
+#    deploy-uat（ArgoCD）/ deploy-prod（ArgoCD）是 K8s 部署，不要禁。
+#    注：deploy-dev 已被 team-cicd/sdlcapi 默认禁，不用再写。
+deploy-container-uat:
+  rules: [{ when: never }]
+deploy-container-prod:
+  rules: [{ when: never }]
+
+# ============== UAT only：prod 部署暂不接入 ==============
+# deploy-prod（ArgoCD prod 部署）保留 cicd-template 默认规则即可：
+# 它只在打 tag 时触发，不打 tag 就不会跑 prod 部署。
+# 如需彻底禁掉 prod ArgoCD 部署，取消下面注释：
+# deploy-prod:
+#   rules: [{ when: never }]
+
+# ============== ⚠️ 红线 ==============
+# 永远不要禁这些 job（公司安全合规要求）：
+#   DockerScan / SCA / GenSecurityReport / approval / appsec_approval / set-release-manager
+# 禁用会被安全 review 卡，且违反合规红线。

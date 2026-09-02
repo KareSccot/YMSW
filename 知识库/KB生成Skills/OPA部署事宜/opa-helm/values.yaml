@@ -1,0 +1,56 @@
+# Default values for opa-service.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+# This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
+image:
+  repository: openpolicyagent/opa
+  # This sets the pull policy for images.
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "1.19.1"
+
+service:
+  type: ClusterIP
+  port: 8181
+
+bundle:
+  # Enable periodic downloads of an OPA bundle from GitLab Generic Package Registry.
+  enabled: false
+  # Stable package directory URL, without the bundle filename.
+  serviceUrl: "https://gitspace.wuxibiologics.com/api/v4/projects/1355/packages/generic/opa-policy-bundle/latest"
+  # Bundle filename or relative path below serviceUrl.
+  resource: "bundle.tar.gz"
+  polling:
+    minDelaySeconds: 60
+    maxDelaySeconds: 120
+  auth:
+    username: "gitlab+deploy-token-125"
+    # Supply the real token at deployment time from a protected, masked CI/CD variable.
+    deployToken: ""
+  tls:
+    # Required temporarily because this GitSpace endpoint uses an untrusted certificate.
+    # Replace this with a trusted custom CA and set it to false when possible.
+    allowInsecureTls: true
+    # Inline PEM certificate. Prefer passing it with Helm --set-file.
+    caCert: ""
+    # Alternatively, mount a CA certificate from an existing Secret.
+    existingSecret:
+      name: ""
+      key: ca.crt
+
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+serviceAccount:
+  create: true
+  automount: false

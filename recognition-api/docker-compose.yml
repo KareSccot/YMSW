@@ -1,0 +1,22 @@
+# VM deployment compose for recognition-api.
+# IMAGE_REGISTRY, SERVICE_NAME, and IMAGE_TAG are exported by the deploy job.
+# Keep non-sensitive application values in application-uat.yml.
+# The four CUSTOM_UAT_* values below are the application secrets supplied through GitLab Variables.
+# Current compose profile is UAT; update the runtime profile strategy before enabling PROD deploy.
+
+services:
+  recognition-api:
+    image: ${IMAGE_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG}
+    container_name: recognition-api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: uat
+      UAT_MYSQL_USERNAME: ${CUSTOM_UAT_MYSQL_USERNAME}
+      UAT_MYSQL_PASSWORD: ${CUSTOM_UAT_MYSQL_PASSWORD}
+      UAT_JWT_SECRET: ${CUSTOM_UAT_JWT_SECRET}
+      UAT_DATA_KEY: ${CUSTOM_UAT_DATA_KEY}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data/template-images:/app/uploads/template-images
+    ports:
+      - "8088:8088"

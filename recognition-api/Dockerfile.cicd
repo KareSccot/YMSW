@@ -1,0 +1,41 @@
+# CICD Dockerfile for recognition-api.
+# CI builds target/*.jar first; this image only packages the artifact.
+
+ARG BASE_IMAGE=eclipse-temurin:17-jre
+FROM ${BASE_IMAGE}
+
+ARG PACKAGE_NAME=recognition-api
+ARG ARTIFACT_FOLDER=target
+ARG SERVICE_PORT=8080
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+USER root
+RUN if ! getent passwd 1000 >/dev/null 2>&1; then useradd --create-home --uid 1000 appuser; fi \
+    && if [ -n "$APT_MIRROR" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+      && sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    elif [ -n "$APT_MIRROR" ] && [ -f /etc/apt/sources.list ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list \
+      && sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends chromium fontconfig fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/uploads/template-images \
+    && chown -R 1000:0 /app
+
+ADD ${ARTIFACT_FOLDER}/*.jar /app/${PACKAGE_NAME}.jar
+RUN ls /app/${PACKAGE_NAME}.jar
+
+USER 1000
+
+EXPOSE ${SERVICE_PORT}
+
+ENV PACKAGE_NAME=${PACKAGE_NAME}
+ENV JAVA_OPTS=""
+ENV TEMPLATE_IMAGE_DIR=/app/uploads/template-images
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/${PACKAGE_NAME}.jar"]
+CMD []

@@ -1,0 +1,44 @@
+# Python 项目 Dockerfile 参考模板
+# Python / Go 等 base-image-builder 暂未维护的语言，直接用语言官方 slim 镜像 + 自己 useradd
+
+FROM python:3.12-slim
+
+# 国内源默认开（清华 / pypi.tuna），外网构建时由 .gitlab-ci.yml DOCKER_BUILD_ARGS 覆盖为空字符串
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple/
+
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+      && sed -i "s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir ${PIP_INDEX_URL:+-i $PIP_INDEX_URL} -r requirements.txt
+
+COPY . .
+
+# 创建非 root 用户（公司规范要求）
+RUN useradd --create-home appuser \
+    && chown -R appuser:appuser /app
+
+# === 仅当应用容器自己 terminate SSL 时打开下面这段 ===
+# 必要原因：cicd-template 部署脚本把 server.crt/key scp 为 root:600，
+#         容器内 appuser 读不了 → 需要 entrypoint 以 root 调权限再切回 appuser。
+# 详见 references/ssl-cert.md § F + templates/entrypoint-ssl.sh.example
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+#     && rm -rf /var/lib/apt/lists/*
+# COPY entrypoint-ssl.sh /usr/local/bin/entrypoint.sh
+# RUN chmod +x /usr/local/bin/entrypoint.sh
+# ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# HTTP-only 时直接 USER appuser，不需要 entrypoint chmod
+USER appuser
+
+# 容器内应用监听的端口（永远 ≥1024，常见 8000/8080）
+# host 端给用户访问的端口在 docker-compose.yml 里映射，与此独立
+EXPOSE 8080
+
+CMD ["python", "main.py"]

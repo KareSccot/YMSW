@@ -13,9 +13,18 @@ spec:
       {{- include "app-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations .Values.bundle.enabled }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.bundle.enabled }}
+        checksum/bundle-config: {{ include (print $.Template.BasePath "/bundle-configmap.yaml") . | sha256sum }}
+        checksum/bundle-auth: {{ include (print $.Template.BasePath "/bundle-secret.yaml") . | sha256sum }}
+        {{- if .Values.bundle.tls.caCert }}
+        checksum/bundle-ca: {{ include (print $.Template.BasePath "/bundle-ca-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "app-chart.labels" . | nindent 8 }}
@@ -42,9 +51,14 @@ spec:
           {{- end }}
           image: {{ include "app-chart.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- with .Values.args }}
+          {{- if or .Values.args .Values.bundle.enabled }}
           args:
+            {{- with .Values.args }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.bundle.enabled }}
+            - "--config-file=/etc/opa/config/opa-config.yaml"
+            {{- end }}
           {{- end }}
           ports:
             - name: http
@@ -75,21 +89,69 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.bundle.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /health?bundles
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+          {{- else }}
           {{- with .Values.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
+          {{- if or .Values.volumeMounts .Values.bundle.enabled }}
           volumeMounts:
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.bundle.enabled }}
+            - name: bundle-config
+              mountPath: /etc/opa/config
+              readOnly: true
+            - name: bundle-auth
+              mountPath: /var/run/secrets/opa-bundle-auth
+              readOnly: true
+            {{- if or .Values.bundle.tls.caCert .Values.bundle.tls.existingSecret.name }}
+            - name: bundle-ca
+              mountPath: /etc/opa/tls
+              readOnly: true
+            {{- end }}
+            {{- end }}
           {{- end }}
-      {{- with .Values.volumes }}
+      {{- if or .Values.volumes .Values.bundle.enabled }}
       volumes:
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.bundle.enabled }}
+        - name: bundle-config
+          configMap:
+            name: {{ include "app-chart.bundleConfigMapName" . }}
+        - name: bundle-auth
+          secret:
+            secretName: {{ if .Values.bundle.auth.existingSecret }}{{ .Values.bundle.auth.existingSecret }}{{ else }}{{ include "app-chart.bundleAuthSecretName" . }}{{ end }}
+            items:
+              - key: basic-auth
+                path: basic-auth
+        {{- if or .Values.bundle.tls.caCert .Values.bundle.tls.existingSecret.name }}
+        - name: bundle-ca
+          secret:
+            secretName: {{ default (include "app-chart.bundleCASecretName" .) .Values.bundle.tls.existingSecret.name }}
+            items:
+              - key: {{ default "ca.crt" .Values.bundle.tls.existingSecret.key }}
+                path: ca.crt
+        {{- end }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

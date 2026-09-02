@@ -1,0 +1,64 @@
+server:
+  port: ${UAT_SERVER_PORT:${SERVER_PORT:8088}}
+  servlet:
+    context-path: ${UAT_SERVER_CONTEXT_PATH:${SERVER_CONTEXT_PATH:/recongition}}
+
+spring:
+  config:
+    activate:
+      on-profile: uat
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${UAT_MYSQL_URL:${MYSQL_URL:jdbc:mysql://10.248.8.144:3406/employee_care?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}}
+    username: ${UAT_MYSQL_USERNAME:${MYSQL_USERNAME:}}
+    password: ${UAT_MYSQL_PASSWORD:${MYSQL_PASSWORD:}}
+    hikari:
+      minimum-idle: ${UAT_DB_MIN_IDLE:${DB_MIN_IDLE:5}}
+      maximum-pool-size: ${UAT_DB_MAX_POOL_SIZE:${DB_MAX_POOL_SIZE:20}}
+      idle-timeout: 300000
+      max-lifetime: 600000
+      connection-timeout: 30000
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  mail:
+    host: ${UAT_SMTP_HOST:${SMTP_HOST:smtp.example.com}}
+    port: ${UAT_SMTP_PORT:${SMTP_PORT:465}}
+    username: ${UAT_SMTP_USERNAME:${SMTP_USERNAME:noreply@example.com}}
+    password: ${UAT_SMTP_PASSWORD:${SMTP_PASSWORD:}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: assign_id
+  type-aliases-package: com.wuxibio.care.entity
+
+app:
+  jwt:
+    secret: ${UAT_JWT_SECRET:${JWT_SECRET:}}
+    access-expiration-ms: ${UAT_JWT_ACCESS_EXPIRATION_MS:${JWT_ACCESS_EXPIRATION_MS:7200000}}
+    refresh-expiration-ms: ${UAT_JWT_REFRESH_EXPIRATION_MS:${JWT_REFRESH_EXPIRATION_MS:604800000}}
+  security:
+    data-key: ${UAT_DATA_KEY:${DATA_KEY:}}
+  base-url: ${UAT_APP_BASE_URL:${APP_BASE_URL:https://10.248.25.91/recongition}}
+  approval-page-url: ${UAT_APPROVAL_PAGE_URL:${APPROVAL_PAGE_URL:https://10.248.25.91/approvals}}
+  template-assets:
+    image-dir: /app/uploads/template-images
+  cors:
+    allowed-origins: ${UAT_CORS_ALLOWED_ORIGINS:${CORS_ALLOWED_ORIGINS:https://10.248.25.91,http://localhost:5173,http://127.0.0.1:5173}}

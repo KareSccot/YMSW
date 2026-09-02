@@ -1,0 +1,70 @@
+# .gitlab-ci.yml —— 接入公司 CICD 体系（单服务）
+#
+# 流水线 = build-app（编译产 artifact）→ build-container（docker build + push）
+#         → deploy-container-uat/prod（SSH + docker compose up）
+#
+# 编译环境与运行时镜像都引用 base-image-builder，**不要自己搭**
+# 现有镜像清单见 ~/.claude/skills/cicd-init-repo/references/base-image-catalog.md
+# 流水线 job 全清单与处置见 ~/.claude/skills/cicd-init-repo/references/cicd-template-jobs.md
+
+include:
+  - project: 'devops/team-cicd'
+    ref: feat/isrm-appsec
+    file: '/sdlcapi/backend-workflow.yml'
+
+# ============== 编译 ==============
+
+variables:
+  # build-app 用 mvn / gradle / pnpm。不设则跳过 build-app（Python 等解释型项目用）
+  BUILD_TOOL: "mvn"            # 或 gradle / pnpm
+  BUILD_ENV: "prod"            # Maven profile（仅 mvn 用）
+
+# ⚠️ team-cicd/sdlcapi 默认禁了 build-app（when: never），下面必须 re-enable + 覆盖编译镜像
+build-app:
+  rules:
+    - !reference [.default_dev_fix_rules, rules]
+  image: <DOCKER_REGISTRY>/devops/<编译镜像>:<TAG>
+  # 例：<DOCKER_REGISTRY>/devops/jdk11.0.16_mvn3.0.5:<某 tag>
+
+# 注：纯容器项目（Python/Go/Dockerfile 多阶段）—— 不设 BUILD_TOOL，**也不要写 build-app 这一段**
+
+# ============== 容器构建 ==============
+
+# 通过 DOCKER_BUILD_ARGS 把"运行时镜像 + artifact 路径"传给 Dockerfile（参数化 Dockerfile 模式）
+build-container:
+  variables:
+    DOCKER_BUILD_ARGS: >
+      --build-arg BASE_IMAGE=<DOCKER_REGISTRY>/devops/<运行时镜像>:<TAG>
+      --build-arg BUILD_FOLDER=.
+      --build-arg ARTIFACT_FOLDER=target
+      --build-arg PACKAGE_NAME=<SERVICE_NAME>
+      --build-arg SERVICE_PORT=8080
+    # 多 Dockerfile mono-repo 用，指定本 job 用哪个 Dockerfile
+    # DOCKERFILE_NAME: "Dockerfile_backend"
+
+# ============== 禁用 ArgoCD 部署链路（只走 VM 容器部署时取消注释）==============
+# ⚠️ 这里禁的是 ArgoCD job；deploy-container-uat / deploy-container-prod 是 VM 部署，不要禁
+# deploy-uat:
+#   rules: [{ when: never }]
+# deploy-prod:
+#   rules: [{ when: never }]
+# 注：deploy-dev 已被 team-cicd/sdlcapi 默认禁，不用再写
+
+# ============== UAT only：禁 prod VM 部署（按需取消注释）==============
+# 如果你的项目阶段只到 UAT、prod 还没准备好，禁掉 deploy-container-prod 避免误触发
+# deploy-container-prod:
+#   rules: [{ when: never }]
+
+# ============== ⚠️ 红线 ==============
+# 永远不要禁这些 job（安全合规要求）：
+#   DockerScan / SCA / GenSecurityReport / approval / appsec_approval / set-release-manager
+
+# ============== 可选 ==============
+
+# 国内源加速（合并到 DOCKER_BUILD_ARGS）
+# build-container:
+#   variables:
+#     DOCKER_BUILD_ARGS: >
+#       --build-arg BASE_IMAGE=<...>
+#       --build-arg APT_MIRROR=mirrors.aliyun.com
+#       --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/

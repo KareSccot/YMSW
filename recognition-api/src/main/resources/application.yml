@@ -1,0 +1,16 @@
+spring:
+  profiles:
+    default: local
+
+app:
+  master-data-reference-sync:
+    enabled: ${MASTER_DATA_REFERENCE_SYNC_ENABLED:true}
+    cron: "${MASTER_DATA_REFERENCE_SYNC_CRON:0 0 2 * * *}"
+    zone: ${MASTER_DATA_REFERENCE_SYNC_ZONE:Asia/Shanghai}
+  template-assets:
+    image-dir: ${TEMPLATE_IMAGE_DIR:/Users/yaoshuteng/Desktop/BIO/work/RecognitionPlatform/assets/uploads}
+  security:
+    replay:
+      enabled: ${REPLAY_PROTECTION_ENABLED:true}
+      timestamp-window-ms: ${REPLAY_TIMESTAMP_WINDOW_MS:300000}
+      max-nonces: ${REPLAY_NONCE_MAX_ENTRIES:10000}
