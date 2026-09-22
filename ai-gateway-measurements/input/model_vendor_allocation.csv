@@ -1,0 +1,12 @@
+llm_model,month,vendor,ratio,match_type
+deepseek-v4-pro,2026-06,Bailian,30,exact
+deepseek-v4-pro,2026-06,Tokenhub,70,exact
+deepseek-v4-flash,2026-06,Bailian,30,exact
+deepseek-v4-flash,2026-06,Tokenhub,70,exact
+deepseek-v4-pro,2026-07,Bailian,30,exact
+deepseek-v4-pro,2026-07,Tokenhub,70,exact
+deepseek-v4-flash,2026-07,Bailian,30,exact
+deepseek-v4-flash,2026-07,Tokenhub,70,exact
+qwen*,,Bailian,100,prefix
+text-embedding-v4,,Bailian,100,exact
+*,,Tokenhub,100,default

@@ -52,17 +52,20 @@ public class MasterDataReferenceService {
     private static final String COUNTRY_ODATA_URL =
             "https://api15.sapsf.cn/odata/v2/PickListValueV2?$format=json&$select=externalCode,label_zh_CN,label_en_US,optionId,status&$filter=PickListV2_id eq 'ISOCountryList' and status eq 'A'";
     private static final List<String> ACTIVE_STATUS_VALUES = List.of("A", "Active", "ACTIVE", "active");
-    private static final Map<String, String> ACTIVE_STATUS_FIELDS = Map.of(
-            "company", "status",
-            "department", "status",
-            "country", "status",
-            "employeeType", "status",
-            "division", "status",
-            "thirdDepartment", "mdfSystemStatus",
-            "fourthDepartment", "mdfSystemStatus",
-            "fifthDepartment", "mdfSystemStatus",
-            "jobTitle", "effectiveStatus",
-            "location", "status");
+    private static final Map<String, String> ACTIVE_STATUS_FIELDS = Map.ofEntries(
+            Map.entry("company", "status"),
+            Map.entry("department", "status"),
+            Map.entry("country", "status"),
+            Map.entry("employeeType", "status"),
+            Map.entry("managementJobLevel", "status"),
+            Map.entry("professionalJobLevel", "status"),
+            Map.entry("jobGrade", "status"),
+            Map.entry("division", "status"),
+            Map.entry("thirdDepartment", "mdfSystemStatus"),
+            Map.entry("fourthDepartment", "mdfSystemStatus"),
+            Map.entry("fifthDepartment", "mdfSystemStatus"),
+            Map.entry("jobTitle", "effectiveStatus"),
+            Map.entry("location", "status"));
     private static final Map<String, RuleReferenceSpec> RULE_REFERENCE_SPECS = buildRuleReferenceSpecs();
 
     private final MasterDataCompanyMapper companyMapper;
@@ -731,6 +734,18 @@ public class MasterDataReferenceService {
                 List.of("label_zh_CN", "label", "label_en_US"),
                 List.of("label_en_US", "label", "label_zh_CN"),
                 List.of("status"), List.of("parentExternalCode"), List.of("optionId")));
+        specs.put("managementJobLevel", jobClassificationSpec(
+                "managementJobLevel", "管理岗位级别"));
+        specs.put("professionalJobLevel", jobClassificationSpec(
+                "professionalJobLevel", "专业岗位级别"));
+        specs.put("jobGrade", new RuleReferenceSpec(
+                "jobGrade", "职位等级",
+                "https://api15.sapsf.cn/odata/v2/PickListValueV2?$format=json&$select=externalCode,PickListV2_effectiveStartDate,label_zh_CN,label_en_US,optionId,status&$filter=PickListV2_id eq 'GlobalGrade' and status eq 'A'",
+                List.of("externalCode"),
+                List.of("PickListV2_effectiveStartDate", "startDate"), List.of("endDate"),
+                List.of("label_zh_CN", "label", "label_en_US"),
+                List.of("label_en_US", "label", "label_zh_CN"),
+                List.of("status"), List.of("parentExternalCode"), List.of("optionId")));
         specs.put("division", new RuleReferenceSpec(
                 "division", "事业部",
                 "https://api15.sapsf.cn/odata/v2/FODivision?$format=json&$select=externalCode,startDate,endDate,name_zh_CN,name_en_US,name_localized,status&$filter=status eq 'A'",
@@ -780,6 +795,17 @@ public class MasterDataReferenceService {
                 List.of("name_en_US", "name", "description", "name_zh_CN"),
                 List.of("status", "effectiveStatus"), List.of("parent", "locationGroup"), List.of("optionId")));
         return Map.copyOf(specs);
+    }
+
+    private static RuleReferenceSpec jobClassificationSpec(String dimension, String label) {
+        return new RuleReferenceSpec(
+                dimension, label,
+                "https://api15.sapsf.cn/odata/v2/FOJobCode?$format=json&$select=externalCode,startDate,endDate,name_zh_CN,name_en_US,name_localized,status&$filter=status eq 'A'",
+                List.of("externalCode", "code"),
+                List.of("startDate", "effectiveStartDate"), List.of("endDate", "effectiveEndDate"),
+                List.of("name_zh_CN", "name_localized", "name", "name_en_US"),
+                List.of("name_en_US", "name_localized", "name", "name_zh_CN"),
+                List.of("status", "effectiveStatus"), List.of(), List.of());
     }
 
     public record RuleReferenceOption(String code, String label) {

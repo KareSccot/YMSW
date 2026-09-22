@@ -181,6 +181,7 @@ public class DingTalkPayloadService {
 
     public void validateDingTalkPayload(String messageType, Map<String, Object> msg, String backgroundImageUrl, String designJson) {
         String msgtype = asString(msg.get("msgtype"), "");
+        boolean hostedLandingPage = validateAndIsHostedLandingPage(designJson);
         if (!messageType.equals(msgtype)) {
             throw new BizException("钉钉 payload 的 msgtype 必须为 " + messageType);
         }
@@ -195,7 +196,9 @@ public class DingTalkPayloadService {
                 Map<String, Object> link = childMap(msg, "link");
                 requireText(link, "title", 1, 128, "link.title");
                 requireText(link, "text", 1, 500, "link.text");
-                requireText(link, "messageUrl", 1, 700, "link.messageUrl");
+                if (!hostedLandingPage) {
+                    requireText(link, "messageUrl", 1, 700, "link.messageUrl");
+                }
             }
             case "image" -> {
                 Map<String, Object> image = childMap(msg, "image");
@@ -244,14 +247,14 @@ public class DingTalkPayloadService {
             }
             case "action_card" -> {
                 Map<String, Object> actionCard = childMap(msg, "action_card");
-                validateActionCardPayload(actionCard);
+                validateActionCardPayload(actionCard, hostedLandingPage);
                 msg.put("action_card", actionCard);
             }
             default -> throw new BizException("无效钉钉消息类型: " + messageType);
         }
     }
 
-    private void validateActionCardPayload(Map<String, Object> actionCard) {
+    private void validateActionCardPayload(Map<String, Object> actionCard, boolean hostedLandingPage) {
         requireText(actionCard, "title", 1, 128, "action_card.title");
         requireText(actionCard, "markdown", 1, 5000, "action_card.markdown");
 
@@ -264,7 +267,9 @@ public class DingTalkPayloadService {
 
         if (singleMode) {
             requireText(actionCard, "single_title", 1, 128, "action_card.single_title");
-            requireText(actionCard, "single_url", 1, 700, "action_card.single_url");
+            if (!hostedLandingPage) {
+                requireText(actionCard, "single_url", 1, 700, "action_card.single_url");
+            }
             actionCard.remove("btn_json_list");
             actionCard.remove("btn_orientation");
             actionCard.remove("button_mode");
@@ -301,6 +306,31 @@ public class DingTalkPayloadService {
         actionCard.remove("single_title");
         actionCard.remove("single_url");
         actionCard.remove("button_mode");
+    }
+
+    private boolean validateAndIsHostedLandingPage(String designJson) {
+        if (designJson == null || designJson.isBlank()) {
+            return false;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode config = objectMapper.readTree(designJson).path("dingTalkLandingPage");
+            if (!config.isObject() || !"HOSTED".equalsIgnoreCase(config.path("destinationMode").asText(""))) {
+                return false;
+            }
+            String contentMode = config.path("contentMode").asText("HTML");
+            if ("IMAGE".equalsIgnoreCase(contentMode)) {
+                if (config.path("imageUrl").asText("").isBlank()) {
+                    throw new BizException("系统页面的图片正文不能为空");
+                }
+            } else if (config.path("html").asText("").isBlank()) {
+                throw new BizException("系统页面的富文本正文不能为空");
+            }
+            return true;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException("系统页面配置格式不正确");
+        }
     }
 
     public String buildDingTalkNativeEnvelope(String messageType, String channelPayloadJson) {

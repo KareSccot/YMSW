@@ -86,6 +86,19 @@ class ApprovalNotificationTemplateVariantTest {
     }
 
     @Test
+    void buildDeliveryMetadata_routesDingTalkApprovalThroughWorkNotification() {
+        ApprovalNotificationService service = newService(mock(TemplateChannelVariantMapper.class));
+        TemplateChannelVariant variant = variant(504L, 50L, "DingTalk", "Approval");
+
+        Map<String, String> metadata = service.buildDeliveryMetadata(variant, "DingTalk");
+
+        assertThat(metadata).containsEntry("source", "WORKFLOW_NOTIFICATION");
+        assertThat(metadata).containsEntry(
+                DingTalkChannel.METADATA_TRANSPORT,
+                DingTalkChannel.TRANSPORT_WORK_NOTIFICATION);
+    }
+
+    @Test
     void notify_usesGlobalLifecycleRulesRegardlessOfApprovalWorkflow() {
         ApprovalWorkflowService workflowService = mock(ApprovalWorkflowService.class);
         ApprovalWorkflowDef workflow = new ApprovalWorkflowDef();

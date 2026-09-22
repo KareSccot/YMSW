@@ -1,4 +1,4 @@
-# Company CICD for recognition-api as an independent GitLab project.
+﻿# Company CICD for recognition-api as an independent GitLab project.
 
 include:
   - project: 'devops/team-cicd'
@@ -7,10 +7,10 @@ include:
 
 variables:
   SERVICE_NAME: "recognition-api"
-  DOCKER_REGISTRY: "<DOCKER_REGISTRY>"
-  SERVICE_REPOSITORY: "<SERVICE_REPOSITORY>"
-  API_BUILD_IMAGE: "<DOCKER_REGISTRY>/devops/<jdk17-maven-build-image>:<TAG>"
-  API_RUNTIME_BASE_IMAGE: "<DOCKER_REGISTRY>/devops/<jre17-runtime-image>:<TAG>"
+  DOCKER_REGISTRY: "cld93-ld-tcr-premium-sh-001.tencentcloudcr.com"
+  SERVICE_REPOSITORY: "recognition"
+  API_BUILD_IMAGE: "cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/jdk17.0.11_9_mvn3.9.6:feat-java-test-project-images-129984"
+  API_RUNTIME_BASE_IMAGE: "eclipse-temurin:17-jre"
   BUILD_TOOL: "mvn"
   BUILD_ENV: "uat"
 
@@ -47,9 +47,18 @@ deploy-prod:
   rules:
     - when: never
 
+
+# VM Docker deployment not yet configured (SSH variables pending).
+deploy-container-uat:
+  rules:
+    - when: never
 # Current deployment mode: UAT only.
 # Remove this override only after PROD_* variables and PROD runtime profile are ready.
 deploy-container-prod:
+  rules:
+    - when: never
+
+deploy-container-uat:
   rules:
     - when: never
 

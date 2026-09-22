@@ -23,6 +23,9 @@ public class TaskTemplate {
 
     private String mode;
 
+    @TableField("send_language")
+    private String sendLanguage;
+
     @TableField("bound_template_id")
     private Long templateHeaderId;
 
@@ -61,6 +64,8 @@ public class TaskTemplate {
     public void setName(String name) { this.name = name; }
     public String getMode() { return mode; }
     public void setMode(String mode) { this.mode = mode; }
+    public String getSendLanguage() { return sendLanguage; }
+    public void setSendLanguage(String sendLanguage) { this.sendLanguage = sendLanguage; }
     public Long getTemplateHeaderId() { return templateHeaderId; }
     public void setTemplateHeaderId(Long templateHeaderId) { this.templateHeaderId = templateHeaderId; }
     public String getDescription() { return description; }

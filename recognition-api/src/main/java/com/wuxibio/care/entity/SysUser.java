@@ -57,7 +57,21 @@ public class SysUser {
     private String employeeType;
     @TableField(exist = false)
     private String employeeTypeDisplay;
+    private String assignmentClass;
+    @TableField(exist = false)
+    private String assignmentClassDisplay;
+    private String managementJobLevel;
+    @TableField(exist = false)
+    private String managementJobLevelDisplay;
+    private String professionalJobLevel;
+    @TableField(exist = false)
+    private String professionalJobLevelDisplay;
+    private String jobGrade;
+    @TableField(exist = false)
+    private String jobGradeDisplay;
+    private LocalDate dateOfBirth;
     private LocalDate hireDate;
+    private LocalDate benefitsEligibilityStartDate;
     private LocalDate contractEndDate;
     private LocalDate probationEndDate;
     private String sourceType;
@@ -126,8 +140,28 @@ public class SysUser {
     public void setEmployeeType(String employeeType) { this.employeeType = employeeType; }
     public String getEmployeeTypeDisplay() { return employeeTypeDisplay; }
     public void setEmployeeTypeDisplay(String employeeTypeDisplay) { this.employeeTypeDisplay = employeeTypeDisplay; }
+    public String getAssignmentClass() { return assignmentClass; }
+    public void setAssignmentClass(String assignmentClass) { this.assignmentClass = assignmentClass; }
+    public String getAssignmentClassDisplay() { return assignmentClassDisplay; }
+    public void setAssignmentClassDisplay(String assignmentClassDisplay) { this.assignmentClassDisplay = assignmentClassDisplay; }
+    public String getManagementJobLevel() { return managementJobLevel; }
+    public void setManagementJobLevel(String managementJobLevel) { this.managementJobLevel = managementJobLevel; }
+    public String getManagementJobLevelDisplay() { return managementJobLevelDisplay; }
+    public void setManagementJobLevelDisplay(String managementJobLevelDisplay) { this.managementJobLevelDisplay = managementJobLevelDisplay; }
+    public String getProfessionalJobLevel() { return professionalJobLevel; }
+    public void setProfessionalJobLevel(String professionalJobLevel) { this.professionalJobLevel = professionalJobLevel; }
+    public String getProfessionalJobLevelDisplay() { return professionalJobLevelDisplay; }
+    public void setProfessionalJobLevelDisplay(String professionalJobLevelDisplay) { this.professionalJobLevelDisplay = professionalJobLevelDisplay; }
+    public String getJobGrade() { return jobGrade; }
+    public void setJobGrade(String jobGrade) { this.jobGrade = jobGrade; }
+    public String getJobGradeDisplay() { return jobGradeDisplay; }
+    public void setJobGradeDisplay(String jobGradeDisplay) { this.jobGradeDisplay = jobGradeDisplay; }
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
     public LocalDate getHireDate() { return hireDate; }
     public void setHireDate(LocalDate hireDate) { this.hireDate = hireDate; }
+    public LocalDate getBenefitsEligibilityStartDate() { return benefitsEligibilityStartDate; }
+    public void setBenefitsEligibilityStartDate(LocalDate benefitsEligibilityStartDate) { this.benefitsEligibilityStartDate = benefitsEligibilityStartDate; }
     public LocalDate getContractEndDate() { return contractEndDate; }
     public void setContractEndDate(LocalDate contractEndDate) { this.contractEndDate = contractEndDate; }
     public LocalDate getProbationEndDate() { return probationEndDate; }

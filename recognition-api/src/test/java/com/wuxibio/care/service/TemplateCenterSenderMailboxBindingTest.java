@@ -15,6 +15,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -30,15 +32,17 @@ class TemplateCenterSenderMailboxBindingTest {
     }
 
     @Test
-    void updateSenderMailbox_allowsCurrentTemplateOwner() {
+    void updateSenderMailbox_routesTaskOwnerToApprovalRequestApi() {
         Fixture fixture = fixture("owner");
         authenticate(10L, "owner");
         when(fixture.governanceService.hasTemplateHeaderPermissionById(50L, 10L, false)).thenReturn(true);
 
-        fixture.service.updateSenderMailbox("50", 22L);
+        assertThatThrownBy(() -> fixture.service.updateSenderMailbox("50", 22L))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("发件箱使用申请");
 
-        verify(fixture.templateSenderMailboxService).requireBindableSenderMailbox(22L);
-        verify(fixture.templateHeaderMapper).update(org.mockito.ArgumentMatchers.isNull(), any());
+        verify(fixture.templateSenderMailboxService, never()).requireBindableSenderMailbox(any());
+        verify(fixture.templateHeaderMapper, never()).update(any(), any());
     }
 
     @Test
@@ -55,14 +59,16 @@ class TemplateCenterSenderMailboxBindingTest {
     }
 
     @Test
-    void updateSenderMailbox_allowsGlobalAdminForTemplateOwnedByAnotherUser() {
+    void updateSenderMailbox_routesGlobalAdminTaskChangeToApprovalRequestApi() {
         Fixture fixture = fixture("owner");
         authenticateGlobalAdmin(1L, "global.admin");
 
-        fixture.service.updateSenderMailbox("50", 22L);
+        assertThatThrownBy(() -> fixture.service.updateSenderMailbox("50", 22L))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("发件箱使用申请");
 
-        verify(fixture.templateSenderMailboxService).requireBindableSenderMailbox(22L);
-        verify(fixture.templateHeaderMapper).update(org.mockito.ArgumentMatchers.isNull(), any());
+        verify(fixture.templateSenderMailboxService, never()).requireBindableSenderMailbox(any());
+        verify(fixture.templateHeaderMapper, never()).update(any(), any());
     }
 
     @Test
@@ -72,13 +78,63 @@ class TemplateCenterSenderMailboxBindingTest {
 
         assertThatThrownBy(() -> fixture.service.updateSenderMailbox("50", null))
                 .isInstanceOf(BizException.class)
-                .hasMessageContaining("必须选择发送发件箱");
+                .hasMessageContaining("发件箱使用申请");
 
         verify(fixture.templateSenderMailboxService, never()).requireBindableSenderMailbox(any());
         verify(fixture.templateHeaderMapper, never()).update(any(), any());
     }
 
+    @Test
+    void updateSenderMailbox_allowsMailboxBindingSystemNotificationTemplate() {
+        Fixture fixture = fixture(
+                "owner",
+                TemplateCenterService.TEMPLATE_KIND_WORKFLOW_NOTIFICATION,
+                TemplateCenterService.TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION,
+                null);
+        authenticateGlobalAdmin(1L, "global.admin");
+
+        assertThatCode(() -> fixture.service.updateSenderMailbox("50", 22L))
+                .doesNotThrowAnyException();
+
+        verify(fixture.templateSenderMailboxService).requireBindableSenderMailbox(22L);
+        verify(fixture.templateHeaderMapper).update(any(), any());
+    }
+
+    @Test
+    void headerViewSeparatesSystemTemplateIdentityFromActiveSmtpSelection() {
+        Fixture activeFixture = fixture(
+                "owner",
+                TemplateCenterService.TEMPLATE_KIND_WORKFLOW_NOTIFICATION,
+                TemplateCenterService.TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION,
+                null);
+        authenticateGlobalAdmin(1L, "global.admin");
+
+        TemplateCenterService.TemplateHeaderView activeView = activeFixture.service.getHeader("50");
+
+        assertThat(activeView.mailboxBindingNotificationTemplate()).isTrue();
+        assertThat(activeView.usesActiveSmtp()).isTrue();
+
+        Fixture mailboxFixture = fixture(
+                "owner",
+                TemplateCenterService.TEMPLATE_KIND_WORKFLOW_NOTIFICATION,
+                TemplateCenterService.TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION,
+                22L);
+
+        TemplateCenterService.TemplateHeaderView mailboxView = mailboxFixture.service.getHeader("50");
+
+        assertThat(mailboxView.mailboxBindingNotificationTemplate()).isTrue();
+        assertThat(mailboxView.usesActiveSmtp()).isFalse();
+    }
+
     private Fixture fixture(String ownerUsername) {
+        return fixture(ownerUsername, TemplateCenterService.TEMPLATE_KIND_TASK, null, null);
+    }
+
+    private Fixture fixture(
+            String ownerUsername,
+            String templateKind,
+            String templateCode,
+            Long senderMailboxId) {
         TemplateHeaderMapper headerMapper = mock(TemplateHeaderMapper.class);
         TemplateChannelVariantMapper variantMapper = mock(TemplateChannelVariantMapper.class);
         TaskTemplateMapper taskTemplateMapper = mock(TaskTemplateMapper.class);
@@ -88,8 +144,10 @@ class TemplateCenterSenderMailboxBindingTest {
         TemplateManualFieldService manualFieldService = new TemplateManualFieldService(tokenService);
         TemplateHeader header = new TemplateHeader();
         header.setId(50L);
+        header.setCode(templateCode);
         header.setName("Recognition Template");
-        header.setTemplateKind("TASK");
+        header.setTemplateKind(templateKind);
+        header.setSenderMailboxId(senderMailboxId);
         header.setStatus("Published");
         header.setOwnerUserId(ownerUsername);
 

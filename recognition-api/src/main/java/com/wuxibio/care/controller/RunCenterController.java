@@ -4,8 +4,10 @@ import com.wuxibio.care.common.R;
 import com.wuxibio.care.security.RequiresPermission;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.RunCenterService;
+import com.wuxibio.care.service.TaskGovernanceService;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -13,9 +15,11 @@ import java.util.Map;
 public class RunCenterController {
 
     private final RunCenterService service;
+    private final TaskGovernanceService taskGovernanceService;
 
-    public RunCenterController(RunCenterService service) {
+    public RunCenterController(RunCenterService service, TaskGovernanceService taskGovernanceService) {
         this.service = service;
+        this.taskGovernanceService = taskGovernanceService;
     }
 
     @GetMapping
@@ -26,7 +30,34 @@ public class RunCenterController {
             @RequestParam(name = "status", required = false) String status,
             @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "runMode", required = false) String runMode) {
-        return R.ok(service.pageRuns(page, size, status, keyword, runMode));
+        Map<String, Object> result = service.pageRuns(page, size, status, keyword, runMode);
+        enrichCurrentApprovers(result);
+        return R.ok(result);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void enrichCurrentApprovers(Map<String, Object> result) {
+        Object rawRecords = result.get("records");
+        if (!(rawRecords instanceof List<?> rawList)) return;
+        List<Map<String, Object>> records = rawList.stream()
+                .filter(Map.class::isInstance)
+                .map(item -> (Map<String, Object>) item)
+                .toList();
+        List<Long> pendingRunIds = records.stream()
+                .filter(item -> "Pending_Approval".equals(item.get("statusNormalized")))
+                .map(item -> item.get("id"))
+                .filter(Number.class::isInstance)
+                .map(Number.class::cast)
+                .map(Number::longValue)
+                .toList();
+        Map<Long, List<Map<String, Object>>> approversByRunId =
+                taskGovernanceService.currentApproversByTaskRunIds(pendingRunIds);
+        for (Map<String, Object> record : records) {
+            Object id = record.get("id");
+            if (id instanceof Number number) {
+                record.put("currentApprovers", approversByRunId.getOrDefault(number.longValue(), List.of()));
+            }
+        }
     }
 
     @GetMapping("/{runId}")

@@ -1,0 +1,200 @@
+{
+  "main": {
+    "id": "54caef76eb6bcb4e",
+    "type": "split",
+    "children": [
+      {
+        "id": "ceaf19e6232ddfbd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9626f4b95cd7632d",
+            "type": "leaf",
+            "state": {
+              "type": "excalidraw",
+              "state": {
+                "file": "user-cicd-skill-white.excalidraw"
+              },
+              "icon": "excalidraw-icon",
+              "title": "user-cicd-skill-white"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "9bce8f429b329070",
+    "type": "split",
+    "children": [
+      {
+        "id": "e9a847d178541484",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "57ffe3fd8187636b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "038bac6c8a52a9ad",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "9768b7d5e82a3f8e",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "fb5f2ec36057163e",
+    "type": "split",
+    "children": [
+      {
+        "id": "b212008d77f35d82",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4f1fd38143e939ce",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "user-cicd-skill-white.excalidraw",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "反向链接"
+            }
+          },
+          {
+            "id": "14a0dfb69801c0a6",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "user-cicd-skill-white.excalidraw",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "出链"
+            }
+          },
+          {
+            "id": "038fb1a2c37d821c",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "d184121cf1c4a8ee",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "59e1603e1e6e4aed",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "user-cicd-skill-white.excalidraw",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false,
+      "obsidian-excalidraw-plugin:新建绘图文件": false
+    }
+  },
+  "active": "9626f4b95cd7632d",
+  "lastOpenFiles": [
+    "animated-diagram.excalidraw",
+    "user-cicd-skill-white.excalidraw",
+    "欢迎.md",
+    "未命名",
+    "未命名.base",
+    "未命名 1.base",
+    "未命名.canvas"
+  ]
+}

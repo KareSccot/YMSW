@@ -1,0 +1,12 @@
+include:
+  - project: 'devops/team-cicd'
+    ref: Master
+    file: 'devops/image-builder.yml'
+  - local: 'jdk/jdk11.0.16_mvn3.0.5/.gitlab-ci.yml'
+  - local: 'jdk/jdk8.0.312_mvn3.0.5/.gitlab-ci.yml'
+  - local: 'jre/jre11.0.16/.gitlab-ci.yml'
+  - local: 'node/node18_npm9.8.1/.gitlab-ci.yml'
+  - local: 'node/node22.21.1_npm11.6.4/.gitlab-ci.yml'
+  - local: 'node/node24.11.1_npm11.6.4/.gitlab-ci.yml'
+  - local: 'deploy-tools/alpine3.20_openssh/.gitlab-ci.yml'
+  - local: 'terragrunt/terraform1.9_tg0.67.0/.gitlab-ci.yml'

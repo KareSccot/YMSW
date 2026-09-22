@@ -74,6 +74,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/health").permitAll()
                 .requestMatchers("/api/v1/templates/images/**").permitAll()
+                .requestMatchers("/api/v1/public/message-pages/**").permitAll()
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )

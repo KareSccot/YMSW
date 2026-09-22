@@ -1,0 +1,43 @@
+# Go Dockerfile 模板（多阶段构建）
+# 共用此 Dockerfile 的 service：<SERVICE_NAME>
+# 调整 COPY 路径时注意各自 BUILD_FOLDER 差异
+
+# ====== 编译阶段 ======
+FROM golang:1.21-alpine AS builder
+
+# 国内源（可选，按需取消注释）
+# ENV GOPROXY=https://goproxy.cn,direct
+
+WORKDIR /build
+
+# 先拷依赖文件，利用层缓存
+COPY go.mod go.sum ./
+RUN go mod download
+
+# 拷源码
+COPY . .
+
+# 静态编译（CGO_ENABLED=0 适合 alpine 运行时）
+RUN CGO_ENABLED=0 go build -o app .
+
+# ====== 运行阶段 ======
+FROM alpine:3.19
+
+# 国内源（可选）
+# RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories
+
+# 非 root 用户（uid 固定 1000，host bind mount 需要）
+RUN adduser --disabled-password --gecos "" --uid 1000 appuser
+
+WORKDIR /app
+COPY --from=builder /build/app .
+# COPY --from=builder /build/configs ./configs  # 按项目实际调整
+
+# 时区（可选，Go 1.15+ 可用 import _ "time/tzdata" 替代）
+# RUN apk add --no-cache tzdata
+
+ARG SERVICE_PORT=8080
+EXPOSE ${SERVICE_PORT}
+
+USER appuser
+ENTRYPOINT ["./app"]

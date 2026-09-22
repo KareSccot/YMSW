@@ -1,0 +1,56 @@
+{
+  "scan_timestamp": "2026-08-17T05:22:40Z",
+  "repos": [
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/cicd-template.git",
+      "branch": "Master",
+      "local_path": "C:/Users/jiang.ke/Desktop/kb-cloned/cicd-template",
+      "commit_sha": "1266de4ce0bf7e078e803c56fe3340818e52c3b9",
+      "domain_hint": "cicd",
+      "scope": [
+        "."
+      ],
+      "kb_namespace": "devops-cicd-template"
+    },
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/gitlab-management.git",
+      "branch": "main",
+      "local_path": "C:/Users/jiang.ke/Desktop/kb-cloned/gitlab-management",
+      "commit_sha": "2756a116e916ca142c6a3ca9bcba8487a805e723",
+      "domain_hint": "cicd",
+      "scope": [
+        "."
+      ],
+      "kb_namespace": "devops-gitlab-management"
+    },
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/team-cicd.git",
+      "branch": "all-branches",
+      "local_path": "C:/Users/jiang.ke/Desktop/kb-cloned/team-cicd",
+      "commit_sha": "801ca3be6e276b37f03c0f0a0a72c9fa91e2c8b4",
+      "domain_hint": "cicd",
+      "scope": [
+        "."
+      ],
+      "kb_namespace": "devops-team-cicd",
+      "branches": [
+        "Master",
+        "docker-test",
+        "feat/ariba",
+        "feat/atlas-team",
+        "feat/axiom",
+        "feat/demojava-enable-sast",
+        "feat/dfs-sciwriter-team",
+        "feat/dpdo-dev-team",
+        "feat/dvcopilot",
+        "feat/init_sci_writer_team",
+        "feat/isrm-appsec",
+        "feat/official-website",
+        "feat/pipeline-pms",
+        "feat/pipeline-tag-test",
+        "feat/python",
+        "pipeline-pms"
+      ]
+    }
+  ]
+}

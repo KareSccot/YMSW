@@ -1,0 +1,16 @@
+[project]
+name = "maas-usage-sync"
+version = "0.1.0"
+description = "Aggregate MaaS API token metrics from Prometheus for DingTalk-ready tables."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+maas-usage-sync = "maas_usage_sync.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

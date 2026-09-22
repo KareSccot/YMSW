@@ -64,7 +64,6 @@ class TaskTemplateServiceShareTest {
                 conditionRuleService,
                 governanceService,
                 auditLogService,
-                odataService,
                 timeDependentService,
                 templateManualFieldService);
     }

@@ -9,7 +9,7 @@ import com.wuxibio.care.mapper.SysUserMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -89,9 +89,7 @@ class TemplateCenterManualFieldConstraintTest {
         DingTalkPayloadService dingTalkPayloadService = new DingTalkPayloadService();
         TemplatePreviewService previewService = new TemplatePreviewService(renderService, dingTalkPayloadService);
 
-        when(tokenService.getSystemTokens()).thenReturn(List.of(
-                new TemplateTokenService.BuiltinToken("Name", "姓名", "")
-        ));
+        when(tokenService.getSystemTokenKeys()).thenReturn(Set.of("Name", "name"));
         when(taskTemplateMapper.selectCount(any())).thenReturn(autoBound ? 1L : 0L);
 
         TemplateCenterService service = new TemplateCenterService(

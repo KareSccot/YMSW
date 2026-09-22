@@ -624,6 +624,112 @@ class SendServiceTest {
     }
 
     @Test
+    void parseExcelByTaskTemplate_usesTaskSendLanguageForValidDataPreview() throws Exception {
+        Long taskTemplateId = 7L;
+        Long templateId = 11L;
+
+        TaskTemplate taskTemplate = new TaskTemplate();
+        taskTemplate.setId(taskTemplateId);
+        taskTemplate.setMode("Manual");
+        taskTemplate.setSendLanguage("EN");
+
+        when(taskTemplateService.getExecutableTemplate(taskTemplateId)).thenReturn(taskTemplate);
+        when(taskTemplateService.getResolvedBindings(taskTemplateId, templateId)).thenReturn(List.of());
+        when(odataService.fetchEmployeesByIds(List.of("E1001"))).thenReturn(Map.of(
+                "E1001", Map.of(
+                        "EmployeeId", "E1001",
+                        "Email", "alice.master@example.org",
+                        "JobTitle", "723047",
+                        "PositionCode", "723047",
+                        "Location", "1001")));
+        when(masterDataLookupService.batchLookupByCodes(
+                eq(MasterDataLookupService.DIMENSION_JOB_TITLE),
+                eq(Set.of("723047")))).thenReturn(Map.of(
+                        "723047", new MdLookupItem(
+                                "723047", "人力资源管理助理主任", "HR Management Assistant Director", "A")));
+        when(masterDataLookupService.batchLookupByCodes(
+                eq(MasterDataLookupService.DIMENSION_LOCATION),
+                eq(Set.of("1001")))).thenReturn(Map.of(
+                        "1001", new MdLookupItem("1001", "上海外高桥", "Shanghai Waigaoqiao", "A")));
+        when(recipientScopeService.validateByEmployeeIds(eq(List.of("E1001")), eq(taskTemplateId)))
+                .thenReturn(new RecipientScopeService.ScopeValidationResult(Set.of(), "{\"scope\":\"test\"}"));
+
+        Map<String, Object> result = service.parseExcelByTaskTemplate(
+                taskTemplateId,
+                templateId,
+                uploadWorkbook("EmployeeId", "E1001"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> rows = (List<Map<String, String>>) result.get("rows");
+        assertEquals("EN", result.get("sendLanguage"));
+        assertEquals("HR Management Assistant Director", rows.get(0).get("JobTitle"));
+        assertEquals("Shanghai Waigaoqiao", rows.get(0).get("Location"));
+    }
+
+    @Test
+    void confirmTaskTemplateSend_rendersReferenceTokensInConfiguredEnglish() {
+        Long taskTemplateId = 7L;
+        Long templateId = 11L;
+
+        TaskTemplate taskTemplate = new TaskTemplate();
+        taskTemplate.setId(taskTemplateId);
+        taskTemplate.setMode("Manual");
+        taskTemplate.setSendLanguage("EN");
+
+        TemplateChannelVariant template = new TemplateChannelVariant();
+        template.setId(templateId);
+        template.setStatus("Published");
+        template.setChannel("Email");
+        template.setSubject("{{JobTitle}} @ {{Location}}");
+        template.setContent("Care message");
+
+        TaskRun run = new TaskRun();
+        run.setId(123L);
+        TaskRecipientItem item = new TaskRecipientItem();
+        item.setId(456L);
+        item.setTaskRunId(123L);
+        item.setRecipientId("E1001");
+
+        Map<String, String> row = new LinkedHashMap<>();
+        row.put("EmployeeId", "E1001");
+        row.put("Email", "alice@example.org");
+        row.put("JobTitle", "723047");
+        row.put("PositionCode", "723047");
+        row.put("Location", "1001");
+
+        when(taskTemplateService.getExecutableTemplate(taskTemplateId)).thenReturn(taskTemplate);
+        when(taskTemplateService.listVariantsForTaskTemplate(taskTemplateId)).thenReturn(List.of(template));
+        when(recipientScopeService.validateByEmployeeIds(eq(List.of("E1001")), eq(taskTemplateId)))
+                .thenReturn(new RecipientScopeService.ScopeValidationResult(Set.of(), "{\"scope\":\"test\"}"));
+        when(runCenterService.startRun(any(), any(), anyInt(), any(), any(), any(), any())).thenReturn(run);
+        when(taskGovernanceService.checkSendApprovalGate(run.getId()))
+                .thenReturn(new TaskGovernanceService.ApprovalGateResult(false, List.of(), "APPROVED_READY"));
+        when(taskTemplateService.getResolvedBindings(taskTemplateId, templateId)).thenReturn(List.of());
+        when(odataService.fetchEmployeesByIds(List.of("E1001"))).thenReturn(Map.of());
+        when(masterDataLookupService.batchLookupByCodes(
+                eq(MasterDataLookupService.DIMENSION_JOB_TITLE), eq(Set.of("723047"))))
+                .thenReturn(Map.of("723047", new MdLookupItem(
+                        "723047", "人力资源管理助理主任", "HR Management Assistant Director", "A")));
+        when(masterDataLookupService.batchLookupByCodes(
+                eq(MasterDataLookupService.DIMENSION_LOCATION), eq(Set.of("1001"))))
+                .thenReturn(Map.of("1001", new MdLookupItem(
+                        "1001", "上海外高桥", "Shanghai Waigaoqiao", "A")));
+        when(runCenterService.createRecipientItem(any(), any(), any(), any())).thenReturn(item);
+        when(templateCenterService.renderVariantContentForSend(any(), any())).thenReturn("Care message");
+        when(templateCenterService.renderVariantChannelPayloadForSend(any(), any())).thenReturn(null);
+        when(templateCenterService.resolveVariantMessageType(any())).thenReturn("email_html");
+
+        service.confirmTaskTemplateSend(taskTemplateId, templateId, List.of(row));
+
+        org.mockito.ArgumentCaptor<MessageChannel.MessageRequest> requestCaptor =
+                org.mockito.ArgumentCaptor.forClass(MessageChannel.MessageRequest.class);
+        verify(emailChannel).send(requestCaptor.capture());
+        assertEquals(
+                "HR Management Assistant Director @ Shanghai Waigaoqiao",
+                requestCaptor.getValue().subject());
+    }
+
+    @Test
     void parseExcelByTaskTemplate_collapsesUploadedSystemAliasColumns() throws Exception {
         Long taskTemplateId = 7L;
         Long templateId = 11L;
@@ -764,6 +870,43 @@ class SendServiceTest {
         assertEquals("人工姓名", rows.get(0).get("Name"));
         assertEquals("BIO", rows.get(0).get("Department"));
         assertEquals("生日快乐", rows.get(0).get("birthdayWish"));
+    }
+
+    @Test
+    void parseExcelByTaskTemplate_resolvesUserBindingFromLocalMasterField() throws Exception {
+        Long taskTemplateId = 7L;
+        Long templateId = 11L;
+
+        TaskTemplate taskTemplate = new TaskTemplate();
+        taskTemplate.setId(taskTemplateId);
+        taskTemplate.setMode("Manual");
+
+        when(taskTemplateService.getExecutableTemplate(taskTemplateId)).thenReturn(taskTemplate);
+        when(taskTemplateService.getResolvedBindings(taskTemplateId, templateId)).thenReturn(List.of(
+                resolvedBinding(
+                        "Name",
+                        "员工姓名",
+                        "System",
+                        "BLOCK",
+                        "{\"type\":\"USER\",\"field\":\"name\"}")));
+        when(odataService.fetchEmployeesByIds(List.of("E1001"))).thenReturn(Map.of(
+                "E1001", Map.of(
+                        "employeeId", "E1001",
+                        "name", "本地主数据姓名")));
+        when(recipientScopeService.validateByEmployeeIds(eq(List.of("E1001")), eq(taskTemplateId)))
+                .thenReturn(new RecipientScopeService.ScopeValidationResult(Set.of(), "{\"scope\":\"test\"}"));
+
+        Map<String, Object> result = service.parseExcelByTaskTemplate(
+                taskTemplateId,
+                templateId,
+                uploadWorkbook(List.of("EmployeeId", "Name"), List.of("E1001", "")));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> rows = (List<Map<String, String>>) result.get("rows");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> errors = (List<Map<String, Object>>) result.get("errors");
+        assertTrue(errors.isEmpty());
+        assertEquals("本地主数据姓名", rows.get(0).get("Name"));
     }
 
     @Test
@@ -1108,6 +1251,9 @@ class SendServiceTest {
                 org.mockito.ArgumentCaptor.forClass(MessageChannel.MessageRequest.class);
         verify(dingTalkChannel).send(requestCaptor.capture());
         org.junit.jupiter.api.Assertions.assertEquals("dt_from_sys_user", requestCaptor.getValue().recipient());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                com.wuxibio.care.channel.DingTalkChannel.TRANSPORT_SERVICE_ACCOUNT,
+                requestCaptor.getValue().metadata().get(com.wuxibio.care.channel.DingTalkChannel.METADATA_TRANSPORT));
     }
 
     private Map<String, String> row(String employeeId, String email) {
@@ -1160,12 +1306,22 @@ class SendServiceTest {
             String name,
             String sourceType,
             String missingPolicy) {
+        return resolvedBinding(code, name, sourceType, missingPolicy, null);
+    }
+
+    private TaskTemplateService.ResolvedBinding resolvedBinding(
+            String code,
+            String name,
+            String sourceType,
+            String missingPolicy,
+            String sourceBindingDefinition) {
         FieldRegistry field = new FieldRegistry();
         field.setCode(code);
         field.setName(name);
         field.setSourceType(sourceType);
         field.setMissingPolicy(missingPolicy);
         field.setStatus("Active");
+        field.setSourceBindingDefinition(sourceBindingDefinition);
 
         TaskTemplateFieldBinding binding = new TaskTemplateFieldBinding();
         binding.setMissingPolicy(missingPolicy);

@@ -1,4 +1,23 @@
-# Ignore .git directories of sub-repos
-**/.git/
-**/.git/***.mp4
+﻿# Binaries / caches
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.trae/
+.claude/
+.venv/
+venv/
 *.mp4
+
+# Base image builder binaries
+base-image-builder/jdk/
+base-image-builder/jre/
+base-image-builder/node/
+base-image-builder/terragrunt/
+
+# DeepSeek harness heavy dirs
+deepseek-harness/node_modules/
+deepseek-harness/.git/
+
+# InternJ local caches
+ObsidianWorkSpace/.obsidian/

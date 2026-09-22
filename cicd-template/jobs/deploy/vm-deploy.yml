@@ -1,6 +1,7 @@
 .deploy_container:
-  image: cld93-ld-tcr-premium-sh-001.tencentcloudcr.com/devops/alpine3.20_openssh:master-134361
   script:
+    - sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
+    - apk add --no-cache openssh-client
     - DEPLOY_KEY_PATH="/tmp/deploy_key_${CI_PIPELINE_ID}"
     - DEPLOY_SSL_CERT="/tmp/ssl_cert_${CI_PIPELINE_ID}"
     - DEPLOY_SSL_KEY="/tmp/ssl_key_${CI_PIPELINE_ID}"

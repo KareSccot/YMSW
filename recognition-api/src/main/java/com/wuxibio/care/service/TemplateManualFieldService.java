@@ -54,12 +54,7 @@ public class TemplateManualFieldService {
     private Set<String> systemTokenKeys() {
         LinkedHashSet<String> keys = new LinkedHashSet<>(RUNTIME_SYSTEM_TOKENS);
         try {
-            for (TemplateTokenService.BuiltinToken token : templateTokenService.getSystemTokens()) {
-                if (token == null || token.key() == null || token.key().isBlank()) {
-                    continue;
-                }
-                keys.add(token.key().trim());
-            }
+            keys.addAll(templateTokenService.getSystemTokenKeys());
         } catch (Exception ignored) {
             // Fail closed for unknown tokens: if system tokens cannot be loaded, unknown template tokens remain manual.
         }

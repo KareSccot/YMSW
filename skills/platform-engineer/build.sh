@@ -37,7 +37,7 @@ cp "$MAINTAIN/resources/templates/"* "$USER_SKILL/resources/templates/"
 cp "$MAINTAIN/resources/snippets/"* "$USER_SKILL/resources/snippets/"
 
 # references 选择性拷贝——跳过平台专属（knowledge-base/、multi-node-deploy）
-for f in base-image-catalog cicd-template-jobs data-persistence gitlab-variables ssl-cert; do
+for f in base-image-catalog cicd-template-jobs ci-troubleshooting data-persistence gitlab-variables ssl-cert; do
   cp "$MAINTAIN/resources/references/$f.md" "$USER_SKILL/resources/references/$f.md"
 done
 

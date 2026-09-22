@@ -57,6 +57,9 @@ public class MasterDataLabelService {
         referenceCodes.put("fifthDepartment", new LinkedHashSet<>());
         referenceCodes.put("location", new LinkedHashSet<>());
         referenceCodes.put("employeeType", new LinkedHashSet<>());
+        referenceCodes.put("managementJobLevel", new LinkedHashSet<>());
+        referenceCodes.put("professionalJobLevel", new LinkedHashSet<>());
+        referenceCodes.put("jobGrade", new LinkedHashSet<>());
         for (SysUser user : users) {
             addIfPresent(companyCodes, user.getCompanyName());
             addIfPresent(departmentCodes, user.getDepartment());
@@ -68,6 +71,9 @@ public class MasterDataLabelService {
             addIfPresent(referenceCodes.get("fifthDepartment"), user.getFifthDepartment());
             addIfPresent(referenceCodes.get("location"), user.getLocation());
             addIfPresent(referenceCodes.get("employeeType"), user.getEmployeeType());
+            addIfPresent(referenceCodes.get("managementJobLevel"), user.getManagementJobLevel());
+            addIfPresent(referenceCodes.get("professionalJobLevel"), user.getProfessionalJobLevel());
+            addIfPresent(referenceCodes.get("jobGrade"), user.getJobGrade());
         }
 
         Map<String, String> companyLabels = loadCompanyLabels(companyCodes, english);
@@ -89,7 +95,22 @@ public class MasterDataLabelService {
                     user.getFifthDepartment(), referenceLabels.get("fifthDepartment")));
             user.setLocationDisplay(displayValue(user.getLocation(), referenceLabels.get("location")));
             user.setEmployeeTypeDisplay(displayValue(user.getEmployeeType(), referenceLabels.get("employeeType")));
+            user.setAssignmentClassDisplay(assignmentClassLabel(user.getAssignmentClass()));
+            user.setManagementJobLevelDisplay(displayValue(
+                    user.getManagementJobLevel(), referenceLabels.get("managementJobLevel")));
+            user.setProfessionalJobLevelDisplay(displayValue(
+                    user.getProfessionalJobLevel(), referenceLabels.get("professionalJobLevel")));
+            user.setJobGradeDisplay(displayValue(user.getJobGrade(), referenceLabels.get("jobGrade")));
         }
+    }
+
+    private String assignmentClassLabel(String code) {
+        if (code == null) return null;
+        return switch (code.trim().toUpperCase(Locale.ROOT)) {
+            case "ST" -> "Home";
+            case "GA" -> "Host";
+            default -> code.trim().isEmpty() ? null : code.trim();
+        };
     }
 
     private Map<String, Map<String, String>> loadReferenceLabels(

@@ -22,7 +22,7 @@ class MasterDataReferenceSchedulerTest {
     private MasterDataReferenceService service;
 
     @Test
-    void dailySyncRefreshesAllTenReferenceSourcesInOrder() {
+    void dailySyncRefreshesAllThirteenReferenceSourcesInOrder() {
         when(service.syncCompanies()).thenReturn(result(33));
         when(service.syncRuleReferences("division")).thenReturn(result(19));
         when(service.syncDepartments()).thenReturn(result(167));
@@ -31,6 +31,9 @@ class MasterDataReferenceSchedulerTest {
         when(service.syncRuleReferences("fifthDepartment")).thenReturn(result(100));
         when(service.syncCountries()).thenReturn(result(246));
         when(service.syncRuleReferences("employeeType")).thenReturn(result(8));
+        when(service.syncRuleReferences("managementJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("professionalJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("jobGrade")).thenReturn(result(20));
         when(service.syncRuleReferences("jobTitle")).thenReturn(result(15075));
         when(service.syncRuleReferences("location")).thenReturn(result(51));
 
@@ -45,6 +48,9 @@ class MasterDataReferenceSchedulerTest {
         order.verify(service).syncRuleReferences("fifthDepartment");
         order.verify(service).syncCountries();
         order.verify(service).syncRuleReferences("employeeType");
+        order.verify(service).syncRuleReferences("managementJobLevel");
+        order.verify(service).syncRuleReferences("professionalJobLevel");
+        order.verify(service).syncRuleReferences("jobGrade");
         order.verify(service).syncRuleReferences("jobTitle");
         order.verify(service).syncRuleReferences("location");
     }
@@ -59,6 +65,9 @@ class MasterDataReferenceSchedulerTest {
         when(service.syncRuleReferences("fifthDepartment")).thenReturn(result(100));
         when(service.syncCountries()).thenReturn(result(246));
         when(service.syncRuleReferences("employeeType")).thenReturn(result(8));
+        when(service.syncRuleReferences("managementJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("professionalJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("jobGrade")).thenReturn(result(20));
         when(service.syncRuleReferences("jobTitle")).thenReturn(result(15075));
         when(service.syncRuleReferences("location")).thenReturn(result(51));
 
@@ -73,6 +82,9 @@ class MasterDataReferenceSchedulerTest {
         order.verify(service).syncRuleReferences("fifthDepartment");
         order.verify(service).syncCountries();
         order.verify(service).syncRuleReferences("employeeType");
+        order.verify(service).syncRuleReferences("managementJobLevel");
+        order.verify(service).syncRuleReferences("professionalJobLevel");
+        order.verify(service).syncRuleReferences("jobGrade");
         order.verify(service).syncRuleReferences("jobTitle");
         order.verify(service).syncRuleReferences("location");
     }
@@ -93,6 +105,9 @@ class MasterDataReferenceSchedulerTest {
         when(service.syncRuleReferences("fifthDepartment")).thenReturn(result(100));
         when(service.syncCountries()).thenReturn(result(246));
         when(service.syncRuleReferences("employeeType")).thenReturn(result(8));
+        when(service.syncRuleReferences("managementJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("professionalJobLevel")).thenReturn(result(30));
+        when(service.syncRuleReferences("jobGrade")).thenReturn(result(20));
         when(service.syncRuleReferences("jobTitle")).thenReturn(result(15075));
         when(service.syncRuleReferences("location")).thenReturn(result(51));
         MasterDataReferenceScheduler scheduler = new MasterDataReferenceScheduler(service);

@@ -10,7 +10,7 @@ import com.wuxibio.care.mapper.SysUserMapper;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
-import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -23,10 +23,7 @@ class TemplateCenterServiceTokenNormalizationTest {
     @Test
     void normalizeTokensJsonDropsSystemFieldMappingTokens() throws Exception {
         TemplateTokenService tokenService = mock(TemplateTokenService.class);
-        when(tokenService.getSystemTokens()).thenReturn(List.of(
-                new TemplateTokenService.BuiltinToken("Name", "员工姓名", ""),
-                new TemplateTokenService.BuiltinToken("Department", "部门", "")
-        ));
+        when(tokenService.getSystemTokenKeys()).thenReturn(Set.of("Name", "name", "Department", "department"));
         TemplateCenterService service = newService(tokenService);
 
         String normalized = callNormalizeTokensJson(service, """

@@ -36,6 +36,7 @@ class ConditionRuleAudiencePreviewTest {
     @Mock private MasterDataLookupService masterDataLookupService;
     @Mock private MasterDataReferenceService masterDataReferenceService;
     @Mock private MasterDataLabelService masterDataLabelService;
+    @Mock private EmployeeAssignmentService employeeAssignmentService;
     @Mock private AuditLogService auditLogService;
 
     private ConditionRuleService service;
@@ -52,10 +53,14 @@ class ConditionRuleAudiencePreviewTest {
                 masterDataLookupService,
                 masterDataReferenceService,
                 masterDataLabelService,
+                employeeAssignmentService,
                 auditLogService);
-        lenient().when(sysUserMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+        List<SysUser> employees = List.of(
                 employee("E1001", "张三", "CN", "RND"),
-                employee("E1002", "李四", "SG", "HR")));
+                employee("E1002", "李四", "SG", "HR"));
+        lenient().when(sysUserMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(employees);
+        lenient().when(employeeAssignmentService.selectRuleContexts(
+                any(), org.mockito.ArgumentMatchers.nullable(java.util.Collection.class))).thenReturn(employees);
     }
 
     @Test
@@ -155,7 +160,8 @@ class ConditionRuleAudiencePreviewTest {
         SysUser employee = employee("E2001", "Position User", "CN", "BIO");
         employee.setJobTitle("高级研究员");
         employee.setPositionCode("POS-2001");
-        when(sysUserMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(employee));
+        when(employeeAssignmentService.selectRuleContexts(
+                any(), org.mockito.ArgumentMatchers.nullable(java.util.Collection.class))).thenReturn(List.of(employee));
 
         Map<String, Object> result = service.previewAudience(
                 "{\"field\":\"JobTitle\",\"operator\":\"eq\",\"value\":\"POS-2001\"}",
@@ -179,7 +185,8 @@ class ConditionRuleAudiencePreviewTest {
         employee.setThirdDepartmentDisplay("三级组织");
         employee.setFourthDepartmentDisplay("四级组织");
         employee.setFifthDepartmentDisplay("五级组织");
-        when(sysUserMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(employee));
+        when(employeeAssignmentService.selectRuleContexts(
+                any(), org.mockito.ArgumentMatchers.nullable(java.util.Collection.class))).thenReturn(List.of(employee));
 
         Map<String, Object> result = service.previewAudience(
                 """

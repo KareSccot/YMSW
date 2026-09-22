@@ -45,7 +45,6 @@ class TaskTemplateAutoVariantSelectionTest {
                 org.mockito.Mockito.mock(ConditionRuleService.class),
                 org.mockito.Mockito.mock(GovernanceService.class),
                 org.mockito.Mockito.mock(AuditLogService.class),
-                org.mockito.Mockito.mock(OdataService.class),
                 timeDependentService,
                 org.mockito.Mockito.mock(TemplateManualFieldService.class));
     }

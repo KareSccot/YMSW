@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -314,6 +315,109 @@ class TemplateCenterDingTalkPayloadTest {
     }
 
     @Test
+    void buildPreviewResponse_rendersSystemTokenInsideHostedLandingBodyArea() throws Exception {
+        TemplateTokenService tokenService = mock(TemplateTokenService.class);
+        when(tokenService.getSystemTokenKeys()).thenReturn(Set.of("Name", "name"));
+        when(tokenService.getSystemTokenPreviewValues()).thenReturn(Map.of(
+                "Name", "员工姓名",
+                "name", "员工姓名"));
+        TemplateRenderService renderService = new TemplateRenderService(tokenService);
+        TemplatePreviewService previewService = new TemplatePreviewService(renderService, new DingTalkPayloadService());
+
+        TemplateHeader header = new TemplateHeader();
+        header.setName("Recognition");
+        TemplateChannelVariant variant = new TemplateChannelVariant();
+        variant.setChannel("DingTalk");
+        variant.setMessageType("link");
+        variant.setSubject("Five years");
+        variant.setChannelPayloadJson("{\"msgtype\":\"link\",\"link\":{\"title\":\"Five years\",\"text\":\"Thanks\",\"messageUrl\":\"\"}}");
+        variant.setDesignJson(objectMapper.writeValueAsString(Map.of(
+                "dingTalkLandingPage", Map.of(
+                        "destinationMode", "HOSTED",
+                        "contentMode", "HTML",
+                        "html", "<p>Hello {{Name}}</p>",
+                        "bodyAreas", List.of(Map.of(
+                                "id", "body_1",
+                                "x", 20,
+                                "y", 96,
+                                "width", 350,
+                                "height", 700,
+                                "html", "<p>Hello {{Name}}</p>",
+                                "contentMode", "transparent"))))));
+
+        Map<String, Object> preview = previewService.previewStored(header, variant);
+        JsonNode renderedDesign = objectMapper.readTree((String) preview.get("designJson"));
+        String renderedHtml = renderedDesign.path("dingTalkLandingPage").path("bodyAreas").get(0).path("html").asText();
+
+        assertThat(renderedHtml).isEqualTo("<p>Hello 员工姓名</p>");
+        assertThat(renderedHtml).doesNotContain("{{Name}}");
+    }
+
+    @Test
+    void buildPreviewResponse_hidesRetainedCustomUrlWhenLinkUsesHostedLandingPage() throws Exception {
+        TemplatePreviewService previewService = newPreviewService();
+        TemplateHeader header = new TemplateHeader();
+        header.setName("Recognition");
+
+        TemplateChannelVariant variant = new TemplateChannelVariant();
+        variant.setChannel("DingTalk");
+        variant.setMessageType("link");
+        variant.setSubject("Five years");
+        variant.setChannelPayloadJson("{\"msgtype\":\"link\",\"link\":{\"title\":\"Five years\",\"text\":\"Thanks\",\"messageUrl\":\"https://retained.example.test\"}}");
+        variant.setDesignJson(hostedLandingDesignJson());
+
+        Map<String, Object> preview = previewService.previewStored(header, variant);
+        Map<?, ?> renderedPayload = (Map<?, ?>) preview.get("renderedPayload");
+        Map<?, ?> renderedLink = (Map<?, ?>) renderedPayload.get("link");
+        Map<?, ?> mobilePreview = (Map<?, ?>) preview.get("mobilePreview");
+        Map<?, ?> mobileCard = (Map<?, ?>) mobilePreview.get("card");
+
+        assertThat(renderedLink.get("messageUrl")).isEqualTo("");
+        assertThat(mobileCard.get("messageUrl")).isEqualTo("");
+    }
+
+    @Test
+    void buildPreviewResponse_hidesRetainedCustomUrlWhenActionCardUsesHostedLandingPage() throws Exception {
+        TemplatePreviewService previewService = newPreviewService();
+        TemplateHeader header = new TemplateHeader();
+        header.setName("Recognition");
+
+        TemplateChannelVariant variant = new TemplateChannelVariant();
+        variant.setChannel("DingTalk");
+        variant.setMessageType("action_card");
+        variant.setSubject("Five years");
+        variant.setChannelPayloadJson("{\"msgtype\":\"action_card\",\"action_card\":{\"title\":\"Five years\",\"markdown\":\"Thanks\",\"single_title\":\"Open\",\"single_url\":\"https://retained.example.test\"}}");
+        variant.setDesignJson(hostedLandingDesignJson());
+
+        Map<String, Object> preview = previewService.previewStored(header, variant);
+        Map<?, ?> renderedPayload = (Map<?, ?>) preview.get("renderedPayload");
+        Map<?, ?> renderedActionCard = (Map<?, ?>) renderedPayload.get("action_card");
+
+        assertThat(renderedActionCard.get("single_url")).isEqualTo("");
+    }
+
+    @Test
+    void buildPreviewResponse_keepsUrlWhenLinkUsesCustomLandingPage() throws Exception {
+        TemplatePreviewService previewService = newPreviewService();
+        TemplateHeader header = new TemplateHeader();
+        header.setName("Recognition");
+
+        TemplateChannelVariant variant = new TemplateChannelVariant();
+        variant.setChannel("DingTalk");
+        variant.setMessageType("link");
+        variant.setSubject("Five years");
+        variant.setChannelPayloadJson("{\"msgtype\":\"link\",\"link\":{\"title\":\"Five years\",\"text\":\"Thanks\",\"messageUrl\":\"https://custom.example.test\"}}");
+        variant.setDesignJson(objectMapper.writeValueAsString(Map.of(
+                "dingTalkLandingPage", Map.of("destinationMode", "CUSTOM_URL"))));
+
+        Map<String, Object> preview = previewService.previewStored(header, variant);
+        Map<?, ?> renderedPayload = (Map<?, ?>) preview.get("renderedPayload");
+        Map<?, ?> renderedLink = (Map<?, ?>) renderedPayload.get("link");
+
+        assertThat(renderedLink.get("messageUrl")).isEqualTo("https://custom.example.test");
+    }
+
+    @Test
     void resolveTestSendRecipient_usesEmployeeIdToFindDingTalkUserId() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysUser user = new SysUser();
@@ -436,6 +540,14 @@ class TemplateCenterDingTalkPayloadTest {
     private TemplatePreviewService newPreviewService() {
         TemplateRenderService renderService = newRenderService();
         return new TemplatePreviewService(renderService, new DingTalkPayloadService());
+    }
+
+    private String hostedLandingDesignJson() throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "dingTalkLandingPage", Map.of(
+                        "destinationMode", "HOSTED",
+                        "contentMode", "HTML",
+                        "html", "<p>Hosted body</p>")));
     }
 
     private TemplateTestSendService newTestSendService(SysUserMapper userMapper) {

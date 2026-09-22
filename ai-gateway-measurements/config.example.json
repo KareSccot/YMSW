@@ -1,0 +1,115 @@
+{
+  "prom_base": "https://promethues-ops-cn.wuxibiologics.com/api/v1",
+  "prom_token": "replace-with-read-only-token",
+  "timezone": "Asia/Shanghai",
+  "dingtalk": {
+    "enabled": false,
+    "base_id": "replace-with-ai-table-base-id",
+    "operator_id": "replace-with-operator-union-id",
+    "app_key": "replace-with-dingtalk-internal-app-key",
+    "app_secret": "replace-with-dingtalk-internal-app-secret",
+    "access_token_url": "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+    "append_rows_url": "https://api.dingtalk.com/v1.0/notable/bases/{base_id}/sheets/{sheet_id_or_name}/records",
+    "batch_size": 100,
+    "tables": {
+      "daily_token_fact": {
+        "sheet_id_or_name": "replace-with-fact-sheet-id-or-name",
+        "fields": [
+          "date",
+          "month",
+          "gateway_env",
+          "gateway_host",
+          "matched_uri",
+          "service",
+          "consumer",
+          "llm_model",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "prompt_tokens_millions",
+          "completion_tokens_millions",
+          "total_tokens_millions"
+        ]
+      },
+      "daily_token_overview": {
+        "sheet_id_or_name": "replace-with-overview-sheet-id-or-name",
+        "fields": [
+          "date",
+          "month",
+          "daily_prompt_tokens",
+          "daily_completion_tokens",
+          "daily_total_tokens",
+          "daily_prompt_tokens_millions",
+          "daily_completion_tokens_millions",
+          "daily_total_tokens_millions",
+          "cumulative_prompt_tokens",
+          "cumulative_completion_tokens",
+          "cumulative_total_tokens",
+          "cumulative_prompt_tokens_millions",
+          "cumulative_completion_tokens_millions",
+          "cumulative_total_tokens_millions"
+        ]
+      },
+      "daily_project_token_fact": {
+        "sheet_id_or_name": "replace-with-project-fact-sheet-id-or-name",
+        "fields": [
+          "date",
+          "month",
+          "gateway_env",
+          "gateway_host",
+          "matched_uri",
+          "service",
+          "consumer",
+          "llm_model",
+          "mapping_status",
+          "matched_project_count",
+          "consumer_type",
+          "project_code",
+          "project_name",
+          "project_department_name",
+          "applicant_name",
+          "project_owner_name",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "prompt_tokens_millions",
+          "completion_tokens_millions",
+          "total_tokens_millions"
+        ]
+      },
+      "demo": {
+        "sheet_id_or_name": "replace-with-demo-sheet-id-or-name",
+        "fields": [
+          "demo_text"
+        ]
+      }
+    }
+  },
+  "yida": {
+    "enabled": true,
+    "app_type": "replace-with-yida-app-type",
+    "form_uuid": "replace-with-yida-form-uuid",
+    "system_token": "replace-with-yida-system-token",
+    "user_id": "replace-with-user-id",
+    "language": "zh_CN",
+    "use_alias": true,
+    "search_field_json": "{\"selectField_mov119ub\":\"获取API高代码开发\"}",
+    "page_size": 100
+  },
+  "api7": {
+    "admin_base": "https://wuxibiologics.admin.api7.cloud",
+    "admin_key": "replace-with-api7-token",
+    "gateway_group_id": "replace-with-api7-gateway-group-id",
+    "page_size": 500,
+    "timeout_seconds": 30
+  },
+  "email": {
+    "smtp_host": "replace-with-smtp-host",
+    "smtp_port": 587,
+    "username": "replace-with-mailbox-or-smtp-user",
+    "password": "replace-with-smtp-password-or-app-password",
+    "from_addr": "replace-with-sender-email",
+    "use_tls": true,
+    "timeout_seconds": 30
+  }
+}

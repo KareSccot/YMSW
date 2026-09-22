@@ -57,12 +57,10 @@ class TaskTemplateDingTalkVariantSupportTest {
         TemplateChannelVariantMapper variantMapper = mock(TemplateChannelVariantMapper.class);
         FieldRegistryMapper fieldRegistryMapper = mock(FieldRegistryMapper.class);
         TimeDependentService timeDependentService = mock(TimeDependentService.class);
-        OdataService odataService = mock(OdataService.class);
         TaskTemplateService service = newService(
                 taskTemplateMapper,
                 fieldRegistryMapper,
                 variantMapper,
-                odataService,
                 timeDependentService,
                 manualFieldService("name", "department"));
 
@@ -80,8 +78,6 @@ class TaskTemplateDingTalkVariantSupportTest {
                 field(11L, "AwardReason", "奖励原因", "Manual"),
                 field(12L, "Department", "部门", "System")));
         when(timeDependentService.isEffective(any(), any(), any())).thenReturn(true);
-        when(odataService.getSystemTokenKeys()).thenReturn(Set.of("name", "department"));
-
         List<TaskTemplateService.ResolvedBinding> bindings = service.getResolvedBindings(7L);
 
         assertThat(bindings)
@@ -99,12 +95,10 @@ class TaskTemplateDingTalkVariantSupportTest {
         TemplateChannelVariantMapper variantMapper = mock(TemplateChannelVariantMapper.class);
         FieldRegistryMapper fieldRegistryMapper = mock(FieldRegistryMapper.class);
         TimeDependentService timeDependentService = mock(TimeDependentService.class);
-        OdataService odataService = mock(OdataService.class);
         TaskTemplateService service = newService(
                 taskTemplateMapper,
                 fieldRegistryMapper,
                 variantMapper,
-                odataService,
                 timeDependentService,
                 manualFieldService("Department", "hireDate"));
 
@@ -119,8 +113,6 @@ class TaskTemplateDingTalkVariantSupportTest {
         when(fieldRegistryMapper.selectList(any())).thenReturn(List.of(
                 field(12L, "Department", "部门", "System")));
         when(timeDependentService.isEffective(any(), any(), any())).thenReturn(true);
-        when(odataService.getSystemTokenKeys()).thenReturn(Set.of("Department", "hireDate"));
-
         List<TaskTemplateService.ResolvedBinding> bindings = service.getResolvedBindings(8L);
 
         assertThat(bindings)
@@ -137,7 +129,6 @@ class TaskTemplateDingTalkVariantSupportTest {
                 mock(TaskTemplateMapper.class),
                 mock(FieldRegistryMapper.class),
                 variantMapper,
-                mock(OdataService.class),
                 timeDependentService,
                 manualFieldService);
 
@@ -160,7 +151,6 @@ class TaskTemplateDingTalkVariantSupportTest {
                 mock(TaskTemplateMapper.class),
                 mock(FieldRegistryMapper.class),
                 variantMapper,
-                mock(OdataService.class),
                 timeDependentService,
                 manualFieldService);
 
@@ -184,7 +174,6 @@ class TaskTemplateDingTalkVariantSupportTest {
                 mock(TaskTemplateMapper.class),
                 mock(FieldRegistryMapper.class),
                 variantMapper,
-                mock(OdataService.class),
                 timeDependentService,
                 manualFieldService);
 
@@ -243,7 +232,6 @@ class TaskTemplateDingTalkVariantSupportTest {
                 mock(ConditionRuleService.class),
                 mock(GovernanceService.class),
                 mock(AuditLogService.class),
-                mock(OdataService.class),
                 timeDependentService,
                 mock(TemplateManualFieldService.class));
     }
@@ -252,17 +240,6 @@ class TaskTemplateDingTalkVariantSupportTest {
             TaskTemplateMapper taskTemplateMapper,
             FieldRegistryMapper fieldRegistryMapper,
             TemplateChannelVariantMapper variantMapper,
-            OdataService odataService,
-            TimeDependentService timeDependentService) {
-        return newService(taskTemplateMapper, fieldRegistryMapper, variantMapper, odataService, timeDependentService,
-                mock(TemplateManualFieldService.class));
-    }
-
-    private TaskTemplateService newService(
-            TaskTemplateMapper taskTemplateMapper,
-            FieldRegistryMapper fieldRegistryMapper,
-            TemplateChannelVariantMapper variantMapper,
-            OdataService odataService,
             TimeDependentService timeDependentService,
             TemplateManualFieldService templateManualFieldService) {
         return new TaskTemplateService(
@@ -276,16 +253,13 @@ class TaskTemplateDingTalkVariantSupportTest {
                 mock(ConditionRuleService.class),
                 mock(GovernanceService.class),
                 mock(AuditLogService.class),
-                odataService,
                 timeDependentService,
                 templateManualFieldService);
     }
 
     private TemplateManualFieldService manualFieldService(String... systemKeys) {
         TemplateTokenService tokenService = mock(TemplateTokenService.class);
-        when(tokenService.getSystemTokens()).thenReturn(List.of(systemKeys).stream()
-                .map(key -> new TemplateTokenService.BuiltinToken(key, key, ""))
-                .toList());
+        when(tokenService.getSystemTokenKeys()).thenReturn(Set.of(systemKeys));
         return new TemplateManualFieldService(tokenService);
     }
 }

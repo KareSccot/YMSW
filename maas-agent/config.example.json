@@ -1,0 +1,21 @@
+{
+  "prom_base": "https://promethues-ops-cn.wuxibiologics.com/api/v1",
+  "prom_token": "replace-with-prom-read-token",
+  "timezone": "Asia/Shanghai",
+  "dingtalk": {
+    "enabled": true,
+    "app_key": "replace-with-dingtalk-app-key",
+    "app_secret": "replace-with-dingtalk-app-secret",
+    "access_token_url": "https://api.dingtalk.com/v1.0/oauth2/accessToken"
+  },
+  "yida": {
+    "enabled": true,
+    "app_type": "replace-with-yida-app-type",
+    "form_uuid": "replace-with-yida-form-uuid",
+    "system_token": "replace-with-yida-system-token",
+    "user_id": "replace-with-user-id",
+    "language": "zh_CN",
+    "use_alias": true,
+    "page_size": 100
+  }
+}

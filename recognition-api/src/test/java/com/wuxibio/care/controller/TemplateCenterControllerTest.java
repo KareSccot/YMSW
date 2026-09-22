@@ -98,4 +98,16 @@ class TemplateCenterControllerTest {
                 isNull(),
                 isNull());
     }
+
+    @Test
+    void createEmptyHeader_delegatesNameAndTemplateKind() {
+        TemplateCenterService service = mock(TemplateCenterService.class);
+        TemplateCenterController controller = new TemplateCenterController(service);
+
+        controller.createEmptyHeader(Map.of(
+                "name", "Recognition",
+                "templateKind", "TASK"));
+
+        verify(service).createEmptyHeader("Recognition", "TASK");
+    }
 }

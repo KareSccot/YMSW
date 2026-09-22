@@ -398,6 +398,9 @@ public class ApprovalNotificationService {
     Map<String, String> buildDeliveryMetadata(TemplateChannelVariant variant, String channelCode) {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("source", "WORKFLOW_NOTIFICATION");
+        if ("DingTalk".equalsIgnoreCase(channelCode)) {
+            metadata.put(DingTalkChannel.METADATA_TRANSPORT, DingTalkChannel.TRANSPORT_WORK_NOTIFICATION);
+        }
         if (variant != null && "Email".equalsIgnoreCase(channelCode)) {
             TemplateSenderMailboxService.Resolution sender =
                     templateSenderMailboxService.resolveForTemplateHeader(variant.getTemplateHeaderId());

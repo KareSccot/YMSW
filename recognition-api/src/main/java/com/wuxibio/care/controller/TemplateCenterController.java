@@ -166,6 +166,14 @@ public class TemplateCenterController {
                 designJson, channelPayloadJson, tokensJson, templateKind));
     }
 
+    @PostMapping("/groups")
+    @RequiresPermission(FunctionPermissionGuard.TEMPLATE_MANAGE)
+    public R<TemplateCenterService.TemplateHeaderView> createEmptyHeader(@RequestBody Map<String, Object> body) {
+        return R.ok(service.createEmptyHeader(
+                asString(body.get("name")),
+                asString(body.get("templateKind"))));
+    }
+
     @PostMapping("/{headerId}/variants")
     @RequiresPermission(FunctionPermissionGuard.TEMPLATE_MANAGE)
     public R<TemplateCenterService.TemplateVariantView> createVariant(

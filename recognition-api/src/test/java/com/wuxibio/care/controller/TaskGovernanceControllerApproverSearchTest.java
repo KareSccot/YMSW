@@ -3,6 +3,7 @@ package com.wuxibio.care.controller;
 import com.wuxibio.care.common.R;
 import com.wuxibio.care.entity.SysUser;
 import com.wuxibio.care.mapper.SysUserMapper;
+import com.wuxibio.care.service.ApprovalAudienceExportService;
 import com.wuxibio.care.service.ApprovalWorkflowService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.TaskGovernanceService;
@@ -25,7 +26,8 @@ class TaskGovernanceControllerApproverSearchTest {
                 mock(TaskGovernanceService.class),
                 mock(ApprovalWorkflowService.class),
                 mock(FunctionPermissionGuard.class),
-                sysUserMapper);
+                sysUserMapper,
+                mock(ApprovalAudienceExportService.class));
         SysUser user = new SysUser();
         user.setId(943490L);
         user.setEmployeeId("30006057");

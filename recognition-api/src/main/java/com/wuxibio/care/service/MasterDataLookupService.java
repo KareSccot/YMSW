@@ -9,9 +9,11 @@ import com.wuxibio.care.dto.MdLookupItem;
 import com.wuxibio.care.entity.MasterDataCompany;
 import com.wuxibio.care.entity.MasterDataCountry;
 import com.wuxibio.care.entity.MasterDataDepartment;
+import com.wuxibio.care.entity.MasterDataRuleReference;
 import com.wuxibio.care.mapper.MasterDataCompanyMapper;
 import com.wuxibio.care.mapper.MasterDataCountryMapper;
 import com.wuxibio.care.mapper.MasterDataDepartmentMapper;
+import com.wuxibio.care.mapper.MasterDataRuleReferenceMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
@@ -38,6 +40,27 @@ public class MasterDataLookupService {
     public static final String DIMENSION_DEPARTMENT = "department";
     public static final String DIMENSION_COUNTRY = "country";
     public static final String DIMENSION_COMPANY = "company";
+    public static final String DIMENSION_JOB_TITLE = "jobTitle";
+    public static final String DIMENSION_DIVISION = "division";
+    public static final String DIMENSION_THIRD_DEPARTMENT = "thirdDepartment";
+    public static final String DIMENSION_FOURTH_DEPARTMENT = "fourthDepartment";
+    public static final String DIMENSION_FIFTH_DEPARTMENT = "fifthDepartment";
+    public static final String DIMENSION_LOCATION = "location";
+    public static final String DIMENSION_EMPLOYEE_TYPE = "employeeType";
+    public static final String DIMENSION_MANAGEMENT_JOB_LEVEL = "managementJobLevel";
+    public static final String DIMENSION_PROFESSIONAL_JOB_LEVEL = "professionalJobLevel";
+    public static final String DIMENSION_JOB_GRADE = "jobGrade";
+    private static final java.util.Set<String> RULE_REFERENCE_DIMENSIONS = java.util.Set.of(
+            DIMENSION_JOB_TITLE,
+            DIMENSION_DIVISION,
+            DIMENSION_THIRD_DEPARTMENT,
+            DIMENSION_FOURTH_DEPARTMENT,
+            DIMENSION_FIFTH_DEPARTMENT,
+            DIMENSION_LOCATION,
+            DIMENSION_EMPLOYEE_TYPE,
+            DIMENSION_MANAGEMENT_JOB_LEVEL,
+            DIMENSION_PROFESSIONAL_JOB_LEVEL,
+            DIMENSION_JOB_GRADE);
 
     // SuccessFactors OData returns "A" / "I" for status; manual imports may use
     // the full word "Active". Accept either as "active" for lookup.
@@ -46,13 +69,16 @@ public class MasterDataLookupService {
     private final MasterDataDepartmentMapper departmentMapper;
     private final MasterDataCountryMapper countryMapper;
     private final MasterDataCompanyMapper companyMapper;
+    private final MasterDataRuleReferenceMapper ruleReferenceMapper;
 
     public MasterDataLookupService(MasterDataDepartmentMapper departmentMapper,
                                    MasterDataCountryMapper countryMapper,
-                                   MasterDataCompanyMapper companyMapper) {
+                                   MasterDataCompanyMapper companyMapper,
+                                   MasterDataRuleReferenceMapper ruleReferenceMapper) {
         this.departmentMapper = departmentMapper;
         this.countryMapper = countryMapper;
         this.companyMapper = companyMapper;
+        this.ruleReferenceMapper = ruleReferenceMapper;
     }
 
     public PageResult<MdLookupItem> searchDepartments(String keyword, int page, int size) {
@@ -123,7 +149,9 @@ public class MasterDataLookupService {
             case DIMENSION_DEPARTMENT -> lookupDepartments(lookupCodes);
             case DIMENSION_COUNTRY -> lookupCountries(lookupCodes);
             case DIMENSION_COMPANY -> lookupCompanies(lookupCodes);
-            default -> Collections.emptyMap();
+            default -> RULE_REFERENCE_DIMENSIONS.contains(dimension)
+                    ? lookupRuleReferences(dimension, lookupCodes)
+                    : Collections.emptyMap();
         };
     }
 
@@ -209,6 +237,23 @@ public class MasterDataLookupService {
         for (MasterDataCompany c : rows) {
             result.put(c.getExternalCode(),
                     new MdLookupItem(c.getExternalCode(), c.getNameZhCn(), c.getNameEnUs(), c.getStatus()));
+        }
+        return result;
+    }
+
+    private Map<String, MdLookupItem> lookupRuleReferences(String dimension, Collection<String> codes) {
+        List<MasterDataRuleReference> rows = ruleReferenceMapper.selectList(
+                new LambdaQueryWrapper<MasterDataRuleReference>()
+                        .eq(MasterDataRuleReference::getDimension, dimension)
+                        .and(q -> q.in(MasterDataRuleReference::getExternalCode, codes)
+                                .or()
+                                .in(MasterDataRuleReference::getOptionId, codes)));
+        Map<String, MdLookupItem> result = new HashMap<>(rows.size());
+        for (MasterDataRuleReference row : rows) {
+            MdLookupItem item = new MdLookupItem(
+                    row.getExternalCode(), row.getLabelZhCn(), row.getLabelEnUs(), row.getStatus());
+            putLookupItem(result, row.getExternalCode(), item);
+            putLookupItem(result, row.getOptionId(), item);
         }
         return result;
     }

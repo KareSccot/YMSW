@@ -3,7 +3,9 @@ package com.wuxibio.care.controller;
 import com.wuxibio.care.common.R;
 import com.wuxibio.care.security.RequiresPermission;
 import com.wuxibio.care.service.ConditionRuleService;
+import com.wuxibio.care.service.ConditionRuleAudienceExportService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
+import com.wuxibio.care.service.TaskTemplateService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,9 +16,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -24,9 +32,16 @@ import java.util.Map;
 public class ConditionRuleController {
 
     private final ConditionRuleService service;
+    private final ConditionRuleAudienceExportService audienceExportService;
+    private final TaskTemplateService taskTemplateService;
 
-    public ConditionRuleController(ConditionRuleService service) {
+    public ConditionRuleController(
+            ConditionRuleService service,
+            ConditionRuleAudienceExportService audienceExportService,
+            TaskTemplateService taskTemplateService) {
         this.service = service;
+        this.audienceExportService = audienceExportService;
+        this.taskTemplateService = taskTemplateService;
     }
 
     @GetMapping
@@ -64,6 +79,23 @@ public class ConditionRuleController {
             @RequestParam(name = "evaluationDate", required = false) LocalDate evaluationDate,
             @RequestParam(name = "limit", defaultValue = "8") int limit) {
         return R.ok(service.previewPublishedAudience(versionId, evaluationDate, limit));
+    }
+
+    @GetMapping("/versions/{versionId}/audience-export")
+    @RequiresPermission(FunctionPermissionGuard.AUTO_TRIGGER_MANAGE)
+    public void exportPublishedAudience(
+            @PathVariable("versionId") Long versionId,
+            @RequestParam(name = "evaluationDate", required = false) LocalDate evaluationDate,
+            Locale locale,
+            HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Cache-Control", "no-store");
+        String filename = audienceExportService.filename(versionId, evaluationDate);
+        response.setHeader(
+                "Content-Disposition",
+                "attachment; filename*=UTF-8''" + URLEncoder.encode(filename, StandardCharsets.UTF_8)
+                        .replace("+", "%20"));
+        audienceExportService.export(versionId, evaluationDate, response.getOutputStream(), locale);
     }
 
     @GetMapping("/field-options")
@@ -116,6 +148,25 @@ public class ConditionRuleController {
             @PathVariable("ruleId") Long ruleId,
             @PathVariable("versionId") Long versionId) {
         return R.ok(service.publish(ruleId, versionId));
+    }
+
+    @GetMapping("/{ruleId}/versions/{versionId}/task-template-bindings")
+    @RequiresPermission(FunctionPermissionGuard.AUTO_TRIGGER_MANAGE)
+    public R<TaskTemplateService.ConditionRuleBindingImpact> taskTemplateBindings(
+            @PathVariable("ruleId") Long ruleId,
+            @PathVariable("versionId") Long versionId) {
+        return R.ok(taskTemplateService.conditionRuleBindingImpact(ruleId, versionId));
+    }
+
+    @PostMapping("/{ruleId}/versions/{versionId}/task-template-bindings/update")
+    @RequiresPermission({
+            FunctionPermissionGuard.TASK_TEMPLATE_EDIT,
+            FunctionPermissionGuard.TASK_TEMPLATE_MANAGE
+    })
+    public R<TaskTemplateService.ConditionRuleBindingUpdateResult> updateTaskTemplateBindings(
+            @PathVariable("ruleId") Long ruleId,
+            @PathVariable("versionId") Long versionId) {
+        return R.ok(taskTemplateService.updateConditionRuleBindings(ruleId, versionId));
     }
 
     @PostMapping("/{ruleId}/copy")

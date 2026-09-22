@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class EmailChannelTest {
@@ -117,6 +119,46 @@ class EmailChannelTest {
         assertThat(wrapped).doesNotContain("<p>normal</p>");
         assertThat(wrapped).contains("<img src=\"cid:letterhead-");
         assertThat(wrapped).contains("width=\"720\" height=\"1280\"");
+        assertThat(wrapped).contains("<td align=\"center\"");
+    }
+
+    @Test
+    void doesNotRasterizeInteractiveEmailEditorV2Html() {
+        TemplateImageStorageService storage = new TemplateImageStorageService(tempDir.toString());
+        HtmlToImageService renderer = mock(HtmlToImageService.class);
+        EmailChannel channel = newEmailChannel(storage, renderer);
+        String html = """
+                <table data-rp-email-editor-v2="true" data-rp-email-v2-mode="interactive_html" width="600" height="600">
+                  <tr><td><a href="https://example.com">可点击链接</a></td></tr>
+                </table>
+                """;
+
+        Object fallback = ReflectionTestUtils.invokeMethod(channel, "buildLetterheadImageFallback", html);
+
+        assertThat(fallback).isNull();
+        verifyNoInteractions(renderer);
+    }
+
+    @Test
+    void rasterizesPosterEmailEditorV2AtItsConfiguredLogicalCanvas() {
+        TemplateImageStorageService storage = new TemplateImageStorageService(tempDir.toString());
+        HtmlToImageService renderer = mock(HtmlToImageService.class);
+        when(renderer.renderEmailLetterheadToImage(anyString(), eq(600), eq(700))).thenReturn(new byte[]{4, 5, 6});
+        EmailChannel channel = newEmailChannel(storage, renderer);
+        String html = """
+                <div data-rp-email-editor-v2="true" data-rp-email-v2-mode="poster_image"
+                     data-rp-email-page-align="right"
+                     data-rp-email-letterhead="true" data-rp-email-letterhead-width="600"
+                     data-rp-email-letterhead-height="700">Poster</div>
+                """;
+
+        Object fallback = ReflectionTestUtils.invokeMethod(channel, "buildLetterheadImageFallback", html);
+        String wrapped = ReflectionTestUtils.invokeMethod(channel, "buildLetterheadImageOnlyHtml", fallback);
+
+        assertThat(fallback).isNotNull();
+        assertThat(wrapped).contains("width=\"600\" height=\"700\"");
+        assertThat(wrapped).contains("<td align=\"right\"");
+        verify(renderer).renderEmailLetterheadToImage(anyString(), eq(600), eq(700));
     }
 
     @Test

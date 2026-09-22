@@ -35,6 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -115,6 +116,34 @@ class TaskGovernanceServiceApprovalResolutionTest {
                 .hasMessageContaining("审批流配置冲突")
                 .hasMessageContaining("WF_HR")
                 .hasMessageContaining("WF_EXEC");
+    }
+
+    @Test
+    void currentApproversByTaskRunIdsReturnsPendingNodePerson() {
+        TaskApprovalInstance approval = new TaskApprovalInstance();
+        approval.setId(501L);
+        approval.setTaskRunId(100L);
+        approval.setStatus(TaskGovernanceService.STATUS_PENDING);
+        TaskApprovalNodeInstance node = new TaskApprovalNodeInstance();
+        node.setApprovalInstanceId(501L);
+        node.setStatus(TaskGovernanceService.STATUS_PENDING);
+        node.setApproverSysUserId(55L);
+        node.setApproverEmployeeId("E1001");
+        node.setSortOrder(1);
+        SysUser approver = new SysUser();
+        approver.setId(55L);
+        approver.setName("Alice");
+        approver.setEmployeeId("E1001");
+        when(taskApprovalInstanceMapper.selectList(any())).thenReturn(List.of(approval));
+        when(taskApprovalNodeInstanceMapper.selectList(any())).thenReturn(List.of(node));
+        when(sysUserMapper.selectById(55L)).thenReturn(approver);
+
+        Map<Long, List<Map<String, Object>>> result =
+                service.currentApproversByTaskRunIds(List.of(100L));
+
+        assertThat(result.get(100L)).containsExactly(Map.of(
+                "name", "Alice",
+                "employeeId", "E1001"));
     }
 
     @Test

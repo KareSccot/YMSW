@@ -3,6 +3,7 @@ package com.wuxibio.care.service;
 import com.wuxibio.care.dto.SenderMailboxRequest;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.SenderMailbox;
+import com.wuxibio.care.entity.SysUser;
 import com.wuxibio.care.mapper.SenderMailboxMapper;
 import com.wuxibio.care.mapper.TemplateHeaderMapper;
 import org.junit.jupiter.api.Test;
@@ -11,11 +12,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +29,7 @@ class SenderMailboxServiceTest {
     @Mock private SenderMailboxMapper mailboxMapper;
     @Mock private ExternalConnectionService connectionService;
     @Mock private TemplateHeaderMapper templateHeaderMapper;
+    @Mock private MailboxOwnerResolver ownerResolver;
 
     @Test
     void updateWithoutPasswordPreservesExistingPassword() {
@@ -84,6 +89,15 @@ class SenderMailboxServiceTest {
         verify(mailboxMapper, never()).deleteById(10L);
     }
 
+    @Test
+    void listAvailableExcludesMailboxWhoseOwnerIsNoLongerEligible() {
+        SenderMailboxService service = service();
+        when(mailboxMapper.selectList(any())).thenReturn(List.of(existingMailbox()));
+        when(ownerResolver.isEligibleEmployeeId("E1001")).thenReturn(false);
+
+        assertTrue(service.listAvailableMailboxes().isEmpty());
+    }
+
     private SenderMailbox existingMailbox() {
         SenderMailbox existing = new SenderMailbox();
         existing.setId(10L);
@@ -94,15 +108,24 @@ class SenderMailboxServiceTest {
         existing.setPassword("ENC(existing)");
         existing.setUseSsl(1);
         existing.setStatus(SenderMailboxService.STATUS_ACTIVE);
+        existing.setOwnerEmployeeId("E1001");
         return existing;
     }
 
     private SenderMailboxService service() {
+        SysUser owner = new SysUser();
+        owner.setId(99L);
+        owner.setEmployeeId("E1001");
+        owner.setName("Mailbox Owner");
+        lenient().when(ownerResolver.requireByEmployeeId("E1001")).thenReturn(owner);
+        lenient().when(ownerResolver.findByEmployeeId("E1001")).thenReturn(owner);
+        lenient().when(ownerResolver.isEligibleEmployeeId("E1001")).thenReturn(true);
         return new SenderMailboxService(
                 mailboxMapper,
                 new SensitiveDataCryptoService("unit-test-key"),
                 connectionService,
-                templateHeaderMapper);
+                templateHeaderMapper,
+                ownerResolver);
     }
 
     private SenderMailbox capturedUpdate() {

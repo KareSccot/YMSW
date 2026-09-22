@@ -1161,6 +1161,90 @@ public class TaskGovernanceService {
         return result;
     }
 
+    public Map<Long, List<Map<String, Object>>> currentApproversByTaskRunIds(Collection<Long> taskRunIds) {
+        List<Long> runIds = taskRunIds == null
+                ? List.of()
+                : taskRunIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (runIds.isEmpty()) return Map.of();
+
+        List<TaskApprovalInstance> approvals = taskApprovalInstanceMapper.selectList(
+                new LambdaQueryWrapper<TaskApprovalInstance>()
+                        .in(TaskApprovalInstance::getTaskRunId, runIds)
+                        .eq(TaskApprovalInstance::getStatus, STATUS_PENDING));
+        if (approvals == null || approvals.isEmpty()) return Map.of();
+
+        Map<Long, Long> runIdByApprovalId = approvals.stream()
+                .filter(approval -> approval.getId() != null && approval.getTaskRunId() != null)
+                .collect(Collectors.toMap(
+                        TaskApprovalInstance::getId,
+                        TaskApprovalInstance::getTaskRunId,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        if (runIdByApprovalId.isEmpty()) return Map.of();
+
+        List<TaskApprovalNodeInstance> pendingNodes = taskApprovalNodeInstanceMapper.selectList(
+                new LambdaQueryWrapper<TaskApprovalNodeInstance>()
+                        .in(TaskApprovalNodeInstance::getApprovalInstanceId, runIdByApprovalId.keySet())
+                        .eq(TaskApprovalNodeInstance::getStatus, STATUS_PENDING)
+                        .orderByAsc(TaskApprovalNodeInstance::getSortOrder));
+        if (pendingNodes == null || pendingNodes.isEmpty()) return Map.of();
+
+        Map<Long, SysUser> userCache = new LinkedHashMap<>();
+        Map<String, SysUser> userByEmployeeIdCache = new LinkedHashMap<>();
+        Map<Long, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        for (TaskApprovalNodeInstance node : pendingNodes) {
+            Long runId = runIdByApprovalId.get(node.getApprovalInstanceId());
+            if (runId == null) continue;
+            SysUser approver = userById(node.getApproverSysUserId(), userCache);
+            if (approver == null) {
+                approver = userByEmployeeId(node.getApproverEmployeeId(), userByEmployeeIdCache);
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("name", userDisplayName(approver));
+            info.put("employeeId", approver == null ? node.getApproverEmployeeId() : approver.getEmployeeId());
+            result.computeIfAbsent(runId, ignored -> new ArrayList<>()).add(info);
+        }
+        return result;
+    }
+
+    public List<ApprovalRecipientExportRow> listApprovalRecipientsForExport(
+            Long approvalInstanceId,
+            Long currentUserId,
+            boolean allowAll) {
+        TaskApprovalInstance approval = taskApprovalInstanceMapper.selectById(approvalInstanceId);
+        if (approval == null) throw new BizException("审批实例不存在");
+        if (!canReadApprovalTrace(approval, currentUserId, allowAll)) {
+            throw new BizException(403, "无权限导出审批发送人群");
+        }
+        return taskRecipientItemMapper.selectList(
+                        new LambdaQueryWrapper<TaskRecipientItem>()
+                                .eq(TaskRecipientItem::getTaskRunId, approval.getTaskRunId())
+                                .orderByAsc(TaskRecipientItem::getRecipientId)
+                                .orderByAsc(TaskRecipientItem::getId))
+                .stream()
+                .map(item -> new ApprovalRecipientExportRow(
+                        item.getRecipientId(),
+                        snapshotString(parseJsonValue(item.getRenderSnapshotJson()), "Name", "name"),
+                        maskContact(item.getRecipient()),
+                        item.getStatus()))
+                .toList();
+    }
+
+    private String snapshotString(Object snapshot, String... keys) {
+        if (!(snapshot instanceof Map<?, ?> map)) return "";
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value != null && !String.valueOf(value).isBlank()) return String.valueOf(value).trim();
+        }
+        return "";
+    }
+
+    public record ApprovalRecipientExportRow(
+            String employeeId,
+            String employeeName,
+            String recipient,
+            String status) {}
+
     private Object maskSensitiveSnapshot(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> masked = new LinkedHashMap<>();

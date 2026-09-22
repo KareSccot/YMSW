@@ -1,0 +1,10 @@
+# maas-agent CI/CD 入口
+# include team-cicd 的 devops/maas-agent/backend-workflow.yml:
+#   build-container(uv sync 在 Dockerfile 内,无需 build-app)→ DockerScan/SCA 扫描
+#   → 推 TCR devops/maas-agent(versioned + latest 双 tag)
+#   → deploy-ops(main push)更新 app-deployments 镜像 tag → ArgoCD 同步 tke-ops
+include:
+  - project: 'devops/team-cicd'
+    # TEMP: 验证期指向 feat 分支;MR 合入 team-cicd Master 后改回 ref: Master
+    ref: feat/maas-agent
+    file: '/devops/maas-agent/backend-workflow.yml'

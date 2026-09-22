@@ -24,8 +24,8 @@ spring:
     default-property-inclusion: non_null
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 64MB
+      max-request-size: 66MB
   mail:
     host: ${UAT_SMTP_HOST:${SMTP_HOST:smtp.example.com}}
     port: ${UAT_SMTP_PORT:${SMTP_PORT:465}}
@@ -57,6 +57,8 @@ app:
   security:
     data-key: ${UAT_DATA_KEY:${DATA_KEY:}}
   base-url: ${UAT_APP_BASE_URL:${APP_BASE_URL:https://10.248.25.91/recongition}}
+  frontend-base-url: ${UAT_FRONTEND_BASE_URL:${FRONTEND_BASE_URL:https://10.248.25.91}}
+  mailbox-binding-approval-path: ${UAT_MAILBOX_BINDING_APPROVAL_PATH:${MAILBOX_BINDING_APPROVAL_PATH:/approvals}}
   approval-page-url: ${UAT_APPROVAL_PAGE_URL:${APPROVAL_PAGE_URL:https://10.248.25.91/approvals}}
   template-assets:
     image-dir: /app/uploads/template-images

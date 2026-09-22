@@ -3,6 +3,7 @@ package com.wuxibio.care.channel;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.service.ExternalConnectionService;
+import com.wuxibio.care.service.DingTalkLandingPageService;
 import com.wuxibio.care.service.HtmlToImageService;
 import com.wuxibio.care.service.TemplateImageStorageService;
 import org.slf4j.Logger;
@@ -24,13 +25,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * DingTalk work-notification channel.
- * Supports native asyncsend_v2 msg payloads and keeps the legacy HTML-to-image path.
+ * DingTalk channel with explicit per-request transport routing.
  */
 @Component
 public class DingTalkChannel implements MessageChannel {
+
+    public static final String METADATA_TRANSPORT = "dingTalkTransport";
+    public static final String TRANSPORT_SERVICE_ACCOUNT = "SERVICE_ACCOUNT";
+    public static final String TRANSPORT_WORK_NOTIFICATION = "WORK_NOTIFICATION";
 
     private static final Logger log = LoggerFactory.getLogger(DingTalkChannel.class);
     private static final String NATIVE_MARKER = "__rpDingTalkNative";
@@ -39,6 +44,7 @@ public class DingTalkChannel implements MessageChannel {
     private final ExternalConnectionService connectionService;
     private final HtmlToImageService htmlToImageService;
     private final TemplateImageStorageService imageStorage;
+    private final DingTalkLandingPageService landingPageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
     private final MediaUploader mediaUploader;
@@ -47,12 +53,13 @@ public class DingTalkChannel implements MessageChannel {
     public DingTalkChannel(
             ExternalConnectionService connectionService,
             HtmlToImageService htmlToImageService,
-            TemplateImageStorageService imageStorage) {
-        this(connectionService, htmlToImageService, imageStorage, null);
+            TemplateImageStorageService imageStorage,
+            DingTalkLandingPageService landingPageService) {
+        this(connectionService, htmlToImageService, imageStorage, landingPageService, null);
     }
 
     DingTalkChannel(ExternalConnectionService connectionService, HtmlToImageService htmlToImageService, MediaUploader mediaUploader) {
-        this(connectionService, htmlToImageService, new TemplateImageStorageService(""), mediaUploader);
+        this(connectionService, htmlToImageService, new TemplateImageStorageService(""), null, mediaUploader);
     }
 
     DingTalkChannel(
@@ -60,9 +67,19 @@ public class DingTalkChannel implements MessageChannel {
             HtmlToImageService htmlToImageService,
             TemplateImageStorageService imageStorage,
             MediaUploader mediaUploader) {
+        this(connectionService, htmlToImageService, imageStorage, null, mediaUploader);
+    }
+
+    DingTalkChannel(
+            ExternalConnectionService connectionService,
+            HtmlToImageService htmlToImageService,
+            TemplateImageStorageService imageStorage,
+            DingTalkLandingPageService landingPageService,
+            MediaUploader mediaUploader) {
         this.connectionService = connectionService;
         this.htmlToImageService = htmlToImageService;
         this.imageStorage = imageStorage;
+        this.landingPageService = landingPageService;
         this.mediaUploader = mediaUploader == null ? this::uploadMedia : mediaUploader;
     }
 
@@ -78,10 +95,11 @@ public class DingTalkChannel implements MessageChannel {
 
     @Override
     public void send(MessageRequest request) {
+        String transport = resolveTransport(request);
         Map<String, String> cfg = connectionService.getActiveConfig("DingTalk");
         NativePayload nativePayload = parseNativePayload(request.channelPayloadJson(), request.content(), request.messageType());
         if (cfg == null) {
-            log.warn("[DINGTALK] No active DingTalk connection configured, falling back to log-only mode");
+            log.warn("[DINGTALK] No active DingTalk connection configured, falling back to log-only mode; transport={}", transport);
             if (nativePayload != null) {
                 log.info("[DINGTALK-MOCK] To: {}, msgtype: {}, payload: {}",
                         request.recipient(), nativePayload.messageType(), truncate(nativePayload.rawJson(), 1000));
@@ -93,8 +111,36 @@ public class DingTalkChannel implements MessageChannel {
         }
 
         try {
-            String accessToken = getAccessToken(cfg.get("appKey"), cfg.get("appSecret"));
-            String agentId = cfg.get("agentId");
+            if (TRANSPORT_SERVICE_ACCOUNT.equals(transport)
+                    && nativePayload != null
+                    && landingPageService != null) {
+                String preparedPayloadJson = landingPageService.prepareNativePayload(
+                        nativePayload.messageType(),
+                        nativePayload.rawJson(),
+                        request.subject(),
+                        request.recipient(),
+                        request.metadata());
+                nativePayload = parseNativePayload(preparedPayloadJson, request.content(), request.messageType());
+            }
+            String accessToken = getAccessToken(
+                    requireConfig(cfg, "appKey", "AppKey"),
+                    requireConfig(cfg, "appSecret", "AppSecret"));
+            if (TRANSPORT_SERVICE_ACCOUNT.equals(transport)) {
+                if (nativePayload == null) {
+                    throw new IllegalArgumentException("服务号发送仅支持当前可维护的钉钉原生消息模板");
+                }
+                String unionId = requireConfig(cfg, "serviceAccountUnionId", "Service Account UnionId");
+                Map<String, Object> msg = prepareNativeMessage(accessToken, nativePayload.message());
+                String uuid = UUID.randomUUID().toString();
+                Map<String, Object> serviceRequest = buildServiceAccountRequest(
+                        unionId, request.recipient(), nativePayload.messageType(), msg, uuid);
+                sendServiceAccount(accessToken, serviceRequest, uuid);
+                log.info("[DINGTALK] Service account accepted {} for {} (uuid={})",
+                        nativePayload.messageType(), request.recipient(), uuid);
+                return;
+            }
+
+            String agentId = requireConfig(cfg, "agentId", "AgentId");
             String sendUrl = "https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2?access_token=" + accessToken;
 
             if (nativePayload != null) {
@@ -109,6 +155,24 @@ public class DingTalkChannel implements MessageChannel {
             log.error("[DINGTALK] Send failed: {}", e.getMessage());
             throw new RuntimeException("钉钉发送失败: " + e.getMessage(), e);
         }
+    }
+
+    private String resolveTransport(MessageRequest request) {
+        String transport = request == null || request.metadata() == null
+                ? null
+                : request.metadata().get(METADATA_TRANSPORT);
+        if (TRANSPORT_SERVICE_ACCOUNT.equals(transport) || TRANSPORT_WORK_NOTIFICATION.equals(transport)) {
+            return transport;
+        }
+        throw new IllegalArgumentException("钉钉发送请求缺少明确的发送方式");
+    }
+
+    private String requireConfig(Map<String, String> cfg, String key, String label) {
+        String value = cfg == null ? null : cfg.get(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("钉钉连接缺少 " + label);
+        }
+        return value.trim();
     }
 
     private NativePayload parseNativePayload(String channelPayloadJson, String content, String requestMessageType) {
@@ -204,6 +268,10 @@ public class DingTalkChannel implements MessageChannel {
 
         if ("link".equals(messageType)) {
             normalizeLinkForSend(accessToken, msg);
+            String messageUrl = asString(childMap(msg, "link").get("messageUrl"), null);
+            if (messageUrl == null) {
+                throw new IllegalArgumentException("link 消息需要跳转地址或系统页面配置");
+            }
         }
 
         if ("voice".equals(messageType) || "file".equals(messageType)) {
@@ -227,6 +295,12 @@ public class DingTalkChannel implements MessageChannel {
 
         if ("action_card".equals(messageType)) {
             normalizeActionCardForSend(msg);
+            Map<String, Object> actionCard = childMap(msg, "action_card");
+            Object rawButtons = actionCard.get("btn_json_list");
+            boolean hasButtons = rawButtons instanceof List<?> buttons && !buttons.isEmpty();
+            if (!hasButtons && asString(actionCard.get("single_url"), null) == null) {
+                throw new IllegalArgumentException("action_card 消息需要按钮地址或系统页面配置");
+            }
         }
 
         return msg;
@@ -341,6 +415,109 @@ public class DingTalkChannel implements MessageChannel {
             throw new RuntimeException("钉钉发送失败: " + result.get("errmsg"));
         }
         log.info("[DINGTALK] task_id: {}", result.get("task_id"));
+    }
+
+    private Map<String, Object> buildServiceAccountRequest(
+            String unionId,
+            String recipient,
+            String messageType,
+            Map<String, Object> msg,
+            String uuid) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("unionid", unionId);
+        body.put("userid_list", List.of(recipient));
+        body.put("is_to_all", false);
+        body.put("msg_type", messageType);
+        body.put("uuid", uuid);
+
+        switch (messageType) {
+            case "text" -> body.put("text_content", requireMessageField(childMap(msg, "text"), "content", "text.content"));
+            case "image" -> body.put("media_id", requireMessageField(childMap(msg, "image"), "media_id", "image.media_id"));
+            case "markdown" -> {
+                Map<String, Object> markdown = childMap(msg, "markdown");
+                body.put("msg_body", Map.of("markdown", Map.of(
+                        "title", requireMessageField(markdown, "title", "markdown.title"),
+                        "text", requireMessageField(markdown, "text", "markdown.text"))));
+            }
+            case "link" -> body.put("msg_body", Map.of("link", buildServiceAccountLink(childMap(msg, "link"))));
+            case "action_card" -> body.put("msg_body", Map.of(
+                    "action_card", buildServiceAccountActionCard(childMap(msg, "action_card"))));
+            default -> throw new IllegalArgumentException("服务号不支持当前钉钉消息类型: " + messageType);
+        }
+        return body;
+    }
+
+    private Map<String, Object> buildServiceAccountLink(Map<String, Object> link) {
+        Map<String, Object> mapped = new LinkedHashMap<>();
+        mapped.put("title", requireMessageField(link, "title", "link.title"));
+        mapped.put("summary", requireMessageField(link, "text", "link.text"));
+        mapped.put("link_url", requireMessageField(link, "messageUrl", "link.messageUrl"));
+        mapped.put("open_type", 1);
+        String coverMediaId = asString(link.get("picUrl"), null);
+        if (coverMediaId != null) {
+            mapped.put("cover_image_media_id", coverMediaId);
+        }
+        return mapped;
+    }
+
+    private Map<String, Object> buildServiceAccountActionCard(Map<String, Object> actionCard) {
+        Map<String, Object> mapped = copyFields(
+                actionCard,
+                List.of("title", "markdown", "single_title", "single_url", "btn_orientation"));
+        Object rawButtons = actionCard.get("btn_json_list");
+        if (rawButtons instanceof List<?> buttons && !buttons.isEmpty()) {
+            List<Object> mappedButtons = new ArrayList<>();
+            for (Object button : buttons) {
+                if (!(button instanceof Map<?, ?> rawButton)) continue;
+                Map<String, Object> source = toStringObjectMap(rawButton);
+                Map<String, Object> mappedButton = new LinkedHashMap<>();
+                mappedButton.put("title", requireMessageField(source, "title", "action_card.button_list.title"));
+                mappedButton.put("action_url", requireMessageField(source, "action_url", "action_card.button_list.action_url"));
+                mappedButtons.add(mappedButton);
+            }
+            mapped.put("button_list", mappedButtons);
+        }
+        return mapped;
+    }
+
+    private Map<String, Object> copyFields(Map<String, Object> source, List<String> fields) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (String field : fields) {
+            Object value = source.get(field);
+            if (value != null && !String.valueOf(value).isBlank()) {
+                copy.put(field, value);
+            }
+        }
+        return copy;
+    }
+
+    private Object requireMessageField(Map<String, Object> source, String field, String label) {
+        Object value = source.get(field);
+        if (value == null || String.valueOf(value).isBlank()) {
+            throw new IllegalArgumentException(label + " 不能为空");
+        }
+        return value;
+    }
+
+    private void sendServiceAccount(String accessToken, Map<String, Object> body, String uuid) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.dingtalk.com/v1.0/exclusive/follow/message/send"))
+                .header("Content-Type", "application/json")
+                .header("x-acs-dingtalk-access-token", accessToken)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new RuntimeException("服务号发送失败，HTTP " + response.statusCode());
+        }
+        Map<String, Object> result = response.body() == null || response.body().isBlank()
+                ? Map.of()
+                : objectMapper.readValue(response.body(), new TypeReference<>() {});
+        String code = asString(result.get("code"), null);
+        if (code != null && !"0".equals(code) && !"success".equalsIgnoreCase(code)) {
+            throw new RuntimeException("服务号发送失败: " + asString(result.get("message"), String.valueOf(result.get("code"))));
+        }
+        log.info("[DINGTALK] Service-account request accepted: uuid={}, result={}", uuid, truncate(response.body(), 1000));
     }
 
     private String uploadMedia(String accessToken, byte[] bytes, String mediaType, String suffix) throws Exception {

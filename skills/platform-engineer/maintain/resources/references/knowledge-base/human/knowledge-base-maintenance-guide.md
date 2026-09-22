@@ -28,9 +28,9 @@ knowledge-base/
 
 ```bash
 ssh -T git@gitspace.wuxibiologics.com
-git clone --depth 1 git@gitspace.wuxibiologics.com:devops/cicd-template.git ~/Desktop/kb-cloned/cicd-template
-git clone --depth 1 git@gitspace.wuxibiologics.com:devops/gitlab-management.git ~/Desktop/kb-cloned/gitlab-management
-git clone --no-single-branch --depth 1 git@gitspace.wuxibiologics.com:devops/team-cicd.git ~/Desktop/kb-cloned/team-cicd
+git clone --depth 1 git@gitspace.wuxibiologics.com:devops/cicd-template.git ~/Desktop/internJ/kb-cloned/cicd-template
+git clone --depth 1 git@gitspace.wuxibiologics.com:devops/gitlab-management.git ~/Desktop/internJ/kb-cloned/gitlab-management
+git clone --no-single-branch --depth 1 git@gitspace.wuxibiologics.com:devops/team-cicd.git ~/Desktop/internJ/kb-cloned/team-cicd
 ```
 
 产出 `manifest.json` 包含每个仓库的 commit SHA、分支信息、scope 配置。

@@ -384,10 +384,20 @@ public class ExternalConnectionService {
     private String testDingTalk(Map<String, String> cfg) throws Exception {
         String appKey = cfg.get("appKey");
         String appSecret = cfg.get("appSecret");
-        if (appKey == null || appSecret == null) throw new BizException("缺少 appKey 或 appSecret");
+        String agentId = cfg.get("agentId");
+        String serviceAccountUnionId = cfg.get("serviceAccountUnionId");
+        if (appKey == null || appKey.isBlank() || appSecret == null || appSecret.isBlank()) {
+            throw new BizException("缺少 appKey 或 appSecret");
+        }
+        if (agentId == null || agentId.isBlank()) {
+            throw new BizException("缺少 AgentId，审批通知无法使用企业应用工作通知");
+        }
+        if (serviceAccountUnionId == null || serviceAccountUnionId.isBlank()) {
+            throw new BizException("缺少 Service Account UnionId，任务消息无法使用服务号发送");
+        }
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://oapi.dingtalk.com/gettoken?appkey=" + appKey + "&appsecret=" + appSecret))
+                .uri(URI.create("https://oapi.dingtalk.com/gettoken?appkey=" + appKey.trim() + "&appsecret=" + appSecret.trim()))
                 .GET().build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         Map<String, Object> body = objectMapper.readValue(response.body(), new TypeReference<>() {});
@@ -395,8 +405,35 @@ public class ExternalConnectionService {
         if (errcode != 0) {
             throw new BizException("钉钉认证失败: " + body.get("errmsg"));
         }
-        String accessToken = (String) body.get("access_token");
-        return "认证成功，access_token: " + accessToken.substring(0, 8) + "...";
+        String accessToken = String.valueOf(body.get("access_token"));
+        HttpRequest serviceAccountRequest = HttpRequest.newBuilder()
+                .uri(URI.create("https://oapi.dingtalk.com/topapi/serviceaccount/get?access_token=" + accessToken))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(
+                        Map.of("unionid", serviceAccountUnionId.trim()))))
+                .build();
+        HttpResponse<String> serviceAccountResponse = httpClient.send(
+                serviceAccountRequest, HttpResponse.BodyHandlers.ofString());
+        Map<String, Object> serviceAccountBody = objectMapper.readValue(
+                serviceAccountResponse.body(), new TypeReference<>() {});
+        int serviceAccountErrcode = ((Number) serviceAccountBody.getOrDefault("errcode", -1)).intValue();
+        if (serviceAccountErrcode != 0) {
+            throw new BizException("服务号查询失败，请检查 UnionId 和服务号管理权限: "
+                    + serviceAccountBody.get("errmsg"));
+        }
+        Object rawServiceAccount = serviceAccountBody.get("service_account");
+        if (!(rawServiceAccount instanceof Map<?, ?> serviceAccount)) {
+            throw new BizException("当前应用未查询到指定服务号");
+        }
+        String returnedUnionId = String.valueOf(serviceAccount.get("unionid"));
+        if (!serviceAccountUnionId.trim().equals(returnedUnionId)) {
+            throw new BizException("当前应用查询到的服务号与配置的 UnionId 不一致");
+        }
+        String status = String.valueOf(serviceAccount.get("status"));
+        if (!"normal".equalsIgnoreCase(status)) {
+            throw new BizException("服务号状态不可用: " + status);
+        }
+        return "认证成功，企业应用工作通知与服务号配置均可用";
     }
 
     private String testSmtp(Map<String, String> cfg) {

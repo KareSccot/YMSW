@@ -12,12 +12,17 @@ import com.wuxibio.care.entity.TaskWorkflowBinding;
 import com.wuxibio.care.mapper.SysUserMapper;
 import com.wuxibio.care.security.RequiresPermission;
 import com.wuxibio.care.security.SecurityUtil;
+import com.wuxibio.care.service.ApprovalAudienceExportService;
 import com.wuxibio.care.service.ApprovalWorkflowService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.MasterDataSyncService;
 import com.wuxibio.care.service.TaskGovernanceService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,16 +41,19 @@ public class TaskGovernanceController {
     private final ApprovalWorkflowService approvalWorkflowService;
     private final FunctionPermissionGuard permissionGuard;
     private final SysUserMapper sysUserMapper;
+    private final ApprovalAudienceExportService approvalAudienceExportService;
 
     public TaskGovernanceController(
             TaskGovernanceService taskGovernanceService,
             ApprovalWorkflowService approvalWorkflowService,
             FunctionPermissionGuard permissionGuard,
-            SysUserMapper sysUserMapper) {
+            SysUserMapper sysUserMapper,
+            ApprovalAudienceExportService approvalAudienceExportService) {
         this.taskGovernanceService = taskGovernanceService;
         this.approvalWorkflowService = approvalWorkflowService;
         this.permissionGuard = permissionGuard;
         this.sysUserMapper = sysUserMapper;
+        this.approvalAudienceExportService = approvalAudienceExportService;
     }
 
     // ============ Tag 字典 ============
@@ -378,6 +386,34 @@ public class TaskGovernanceController {
                 permissionGuard.hasAny(
                         FunctionPermissionGuard.TASK_GOVERNANCE_MANAGE,
                         FunctionPermissionGuard.APPROVAL_TRACK)));
+    }
+
+    @GetMapping("/approvals/{id}/recipients/export")
+    @RequiresPermission({
+            FunctionPermissionGuard.TASK_GOVERNANCE_MANAGE,
+            FunctionPermissionGuard.APPROVAL_REQUEST,
+            FunctionPermissionGuard.APPROVAL_TRACK,
+            FunctionPermissionGuard.APPROVAL_DECIDE
+    })
+    public void exportApprovalRecipients(
+            @PathVariable("id") Long id,
+            Locale locale,
+            HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Cache-Control", "no-store");
+        String filename = approvalAudienceExportService.filename(id);
+        response.setHeader(
+                "Content-Disposition",
+                "attachment; filename*=UTF-8''" + URLEncoder.encode(filename, StandardCharsets.UTF_8)
+                        .replace("+", "%20"));
+        approvalAudienceExportService.export(
+                id,
+                SecurityUtil.getCurrentUserId(),
+                permissionGuard.hasAny(
+                        FunctionPermissionGuard.TASK_GOVERNANCE_MANAGE,
+                        FunctionPermissionGuard.APPROVAL_TRACK),
+                response.getOutputStream(),
+                locale);
     }
 
     @PostMapping("/approvals/{id}/cancel")

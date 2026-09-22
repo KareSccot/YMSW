@@ -24,6 +24,15 @@ import static org.mockito.Mockito.when;
 class TemplateCenterEmailSizePreflightTest {
 
     @Test
+    void normalizeVariantPayloadRejectsBlankEmailSubject() {
+        Fixture fixture = newFixture();
+
+        assertThatThrownBy(() -> normalizedEmailPayload(fixture.service, "   ", "<p>Body</p>"))
+                .isInstanceOf(BizException.class)
+                .hasMessage("邮件主题不能为空");
+    }
+
+    @Test
     void validateEmailMessageSizeBeforeSaveRejectsOversizedRenderedEmail() {
         Fixture fixture = newFixture();
         when(fixture.emailChannel.estimateRenderedMessageSize(anyString(), anyString()))

@@ -3,6 +3,7 @@ package com.wuxibio.care.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.channel.EmailChannel;
+import com.wuxibio.care.channel.DingTalkChannel;
 import com.wuxibio.care.channel.MessageChannel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wuxibio.care.common.BizException;
@@ -968,7 +969,8 @@ public class RunCenterService {
             String renderedChannelPayloadJson = templateCenterService.renderVariantChannelPayloadForSend(template, tokenValues);
             String messageType = templateCenterService.resolveVariantMessageType(template);
             storeRenderedMessageSnapshot(item, subject, content, renderedChannelPayloadJson, messageType);
-            Map<String, String> metadata = buildMessageMetadata(run);
+            Map<String, String> metadata = buildMessageMetadata(run, template.getChannel());
+            addDingTalkLandingMetadata(metadata, run, template, item, tokenValues);
             channel.send(new MessageChannel.MessageRequest(
                     recipient,
                     subject,
@@ -1042,13 +1044,15 @@ public class RunCenterService {
                         message.channelPayloadJson(),
                         message.messageType());
             }
+            Map<String, String> metadata = buildMessageMetadata(run, template.getChannel());
+            addDingTalkLandingMetadata(metadata, run, template, item, tokenValues);
             channel.send(new MessageChannel.MessageRequest(
                     recipient,
                     message.subject(),
                     message.content(),
                     message.messageType(),
                     message.channelPayloadJson(),
-                    buildMessageMetadata(run)));
+                    metadata));
             transitionItemStatus(item, "Sent_Success", null, null);
             integrationLogService.log(
                     template.getChannel(),
@@ -1070,9 +1074,12 @@ public class RunCenterService {
         }
     }
 
-    private Map<String, String> buildMessageMetadata(TaskRun run) {
+    private Map<String, String> buildMessageMetadata(TaskRun run, String channel) {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("taskRunId", String.valueOf(run.getId()));
+        if ("DingTalk".equalsIgnoreCase(channel)) {
+            metadata.put(DingTalkChannel.METADATA_TRANSPORT, DingTalkChannel.TRANSPORT_SERVICE_ACCOUNT);
+        }
         Map<String, Object> mailbox = parseMailboxSelectionSnapshot(run.getChannelSelectionJson());
         if (mailbox.isEmpty()) {
             return metadata;
@@ -1091,6 +1098,26 @@ public class RunCenterService {
             metadata.put(EmailChannel.METADATA_EXTERNAL_CONNECTION_ID, externalConnectionId);
         }
         return metadata;
+    }
+
+    private void addDingTalkLandingMetadata(
+            Map<String, String> metadata,
+            TaskRun run,
+            TemplateChannelVariant template,
+            TaskRecipientItem item,
+            Map<String, String> tokenValues) {
+        if (!"DingTalk".equalsIgnoreCase(template.getChannel())) {
+            return;
+        }
+        String designJson = templateCenterService.renderVariantDesignJsonForSend(template, tokenValues);
+        metadata.put(DingTalkLandingPageService.METADATA_RENDERED_DESIGN_JSON,
+                designJson == null ? "" : designJson);
+        metadata.put(DingTalkLandingPageService.METADATA_TEMPLATE_HEADER_ID,
+                String.valueOf(template.getTemplateHeaderId()));
+        metadata.put(DingTalkLandingPageService.METADATA_CHANNEL_VARIANT_ID,
+                String.valueOf(template.getId()));
+        metadata.put(DingTalkLandingPageService.METADATA_LANDING_SOURCE_KEY,
+                "RUN:" + run.getId() + ":" + item.getRecipientId() + ":" + template.getId());
     }
 
     @SuppressWarnings("unchecked")

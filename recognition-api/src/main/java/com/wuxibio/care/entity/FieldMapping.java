@@ -11,7 +11,9 @@ public class FieldMapping {
     private Long id;
     private Long queryConfigId;
     private String sourceField;
-    private String tokenKey;
+    /** Legacy physical column name retained for existing deployments. */
+    @TableField("token_key")
+    private String targetField;
     private String label;
     private String fieldType;
     private Integer isBuiltin;
@@ -27,15 +29,8 @@ public class FieldMapping {
     public String getSourceField() { return sourceField; }
     public void setSourceField(String sourceField) { this.sourceField = sourceField; }
 
-    /** @deprecated Use {@link #getSourceField()} instead. Kept for backward compatibility in OdataService. */
-    @Deprecated
-    public String getOdataField() { return sourceField; }
-    /** @deprecated Use {@link #setSourceField(String)} instead. Kept for backward compatibility in OdataService. */
-    @Deprecated
-    public void setOdataField(String odataField) { this.sourceField = odataField; }
-
-    public String getTokenKey() { return tokenKey; }
-    public void setTokenKey(String tokenKey) { this.tokenKey = tokenKey; }
+    public String getTargetField() { return targetField; }
+    public void setTargetField(String targetField) { this.targetField = targetField; }
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
     public String getFieldType() { return fieldType; }

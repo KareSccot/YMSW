@@ -76,7 +76,8 @@ public class TaskTemplateController {
                 asString(body.get("description")),
                 asLong(body.get("conditionRuleVersionId")),
                 asLong(body.get("autoChannelVariantId")),
-                parseBindings(body.get("fieldBindings"))));
+                parseBindings(body.get("fieldBindings")),
+                asString(body.get("sendLanguage"))));
     }
 
     @PutMapping("/{id}")
@@ -96,7 +97,9 @@ public class TaskTemplateController {
                 conditionRuleProvided,
                 asLong(body.get("autoChannelVariantId")),
                 autoChannelVariantProvided,
-                parseBindings(body.get("fieldBindings"))));
+                parseBindings(body.get("fieldBindings")),
+                asString(body.get("sendLanguage")),
+                body.containsKey("sendLanguage")));
     }
 
     @PutMapping("/{id}/status")

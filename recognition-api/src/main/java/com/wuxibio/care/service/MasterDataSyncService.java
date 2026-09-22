@@ -5,12 +5,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.common.PageResult;
+import com.wuxibio.care.entity.EmployeeAssignment;
 import com.wuxibio.care.entity.ExternalConnection;
 import com.wuxibio.care.entity.QueryConfig;
 import com.wuxibio.care.entity.SysRole;
 import com.wuxibio.care.entity.SysUser;
 import com.wuxibio.care.entity.SysUserRole;
 import com.wuxibio.care.mapper.ExternalConnectionMapper;
+import com.wuxibio.care.mapper.EmployeeAssignmentMapper;
 import com.wuxibio.care.mapper.QueryConfigMapper;
 import com.wuxibio.care.mapper.SysRoleMapper;
 import com.wuxibio.care.mapper.SysUserMapper;
@@ -54,6 +56,8 @@ public class MasterDataSyncService {
     private final ExternalConnectionMapper connectionMapper;
     private final ExternalConnectionService connectionService;
     private final FieldMappingService fieldMappingService;
+    private final EmployeeAssignmentMapper employeeAssignmentMapper;
+    private final EmployeeAssignmentService employeeAssignmentService;
     private final SysUserMapper sysUserMapper;
     private final SysRoleMapper sysRoleMapper;
     private final SysUserRoleMapper sysUserRoleMapper;
@@ -65,6 +69,8 @@ public class MasterDataSyncService {
                                  ExternalConnectionMapper connectionMapper,
                                  ExternalConnectionService connectionService,
                                  FieldMappingService fieldMappingService,
+                                 EmployeeAssignmentMapper employeeAssignmentMapper,
+                                 EmployeeAssignmentService employeeAssignmentService,
                                  SysUserMapper sysUserMapper,
                                  SysRoleMapper sysRoleMapper,
                                  SysUserRoleMapper sysUserRoleMapper,
@@ -73,6 +79,8 @@ public class MasterDataSyncService {
         this.connectionMapper = connectionMapper;
         this.connectionService = connectionService;
         this.fieldMappingService = fieldMappingService;
+        this.employeeAssignmentMapper = employeeAssignmentMapper;
+        this.employeeAssignmentService = employeeAssignmentService;
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
@@ -100,7 +108,7 @@ public class MasterDataSyncService {
         String sourceType = conn.getType();
         boolean isHrdc = "HRDC".equalsIgnoreCase(sourceType);
 
-        Map<String, String> sourceToToken = fieldMappingService.getSourceFieldToTokenMapByConfig(personConfig.getId());
+        Map<String, String> sourceToTarget = fieldMappingService.getSourceFieldToTargetFieldMapByConfig(personConfig.getId());
         String idField = personConfig.getEmployeeIdField();
         if (idField == null || idField.isBlank()) throw new BizException("人员查询配置缺少员工编号字段");
 
@@ -121,6 +129,7 @@ public class MasterDataSyncService {
         Long employeeRoleId = ensureEmployeeRoleId();
         String synchronizedUserPassword = passwordEncoder.encode(UUID.randomUUID().toString());
         int inserted = 0, updated = 0;
+        boolean storesAssignments = "SuccessFactors".equalsIgnoreCase(sourceType);
 
         // Snapshot existing sys_user rows by employee_id for upsert
         Map<String, SysUser> existingByEmployeeId = new LinkedHashMap<>();
@@ -132,13 +141,45 @@ public class MasterDataSyncService {
             }
         }
 
+        Map<String, List<SourceAssignment>> assignmentsByEmployeeId = new LinkedHashMap<>();
         for (Map<String, Object> row : allPersons) {
             Object idVal = readPath(row, idField);
             if (idVal == null) continue;
             String empId = String.valueOf(idVal).trim();
             if (empId.isEmpty()) continue;
 
-            Map<String, String> tokenValues = mapTokens(row, sourceToToken, isHrdc, companyLookup, locationLookup);
+            Map<String, String> targetValues = mapTargetFields(row, sourceToTarget, isHrdc, companyLookup, locationLookup);
+            String sfUserId = storesAssignments ? safeStr(readPath(row, "userId")) : empId;
+            if (storesAssignments && sfUserId.isBlank()) {
+                throw new BizException("SuccessFactors 人员档案缺少 userId (personIdExternal=" + empId + ")");
+            }
+            assignmentsByEmployeeId.computeIfAbsent(empId, ignored -> new ArrayList<>())
+                    .add(new SourceAssignment(
+                            sfUserId,
+                            sourceBoolean(readPath(row, "isPrimaryAssignment")),
+                            targetValues));
+        }
+
+        Map<String, EmployeeAssignment> existingAssignmentByUserId = new LinkedHashMap<>();
+        if (storesAssignments) {
+            employeeAssignmentMapper.markSourceInactive(sourceType);
+            List<EmployeeAssignment> existingAssignments = employeeAssignmentMapper.selectList(
+                    new LambdaQueryWrapper<EmployeeAssignment>()
+                            .eq(EmployeeAssignment::getSourceType, sourceType));
+            if (existingAssignments != null) {
+                for (EmployeeAssignment assignment : existingAssignments) {
+                    if (assignment.getSfUserId() != null && !assignment.getSfUserId().isBlank()) {
+                        existingAssignmentByUserId.put(assignment.getSfUserId(), assignment);
+                    }
+                }
+            }
+        }
+
+        int assignmentRows = 0;
+        for (Map.Entry<String, List<SourceAssignment>> employeeEntry : assignmentsByEmployeeId.entrySet()) {
+            String empId = employeeEntry.getKey();
+            List<SourceAssignment> sourceAssignments = inheritHomeDates(employeeEntry.getValue());
+            SourceAssignment projection = selectProjectionAssignment(sourceAssignments);
 
             SysUser target = existingByEmployeeId.get(empId);
             boolean isNew = (target == null);
@@ -156,12 +197,10 @@ public class MasterDataSyncService {
                 target.setStatus(SYNCED_USER_STATUS);
             }
 
-            // Apply token-mapped master-data fields (only refresh data, never touch
+            // Apply configured master-data fields (only refresh data, never touch
             // username/password/role bindings).
-            applyTokenValues(target, tokenValues);
+            applyTargetValues(target, projection.targetValues());
 
-            // Extra fields not produced by token mapping
-            applySourceFallbacks(target, row, isHrdc);
             // Note: row.get("status") is the HR system's employment status (Active/Inactive
             // employee). We do NOT overwrite sys_user.status for existing login users —
             // it's the platform login status, a different concept.
@@ -188,20 +227,44 @@ public class MasterDataSyncService {
                 existingByEmployeeId.put(empId, target);
                 updated++;
             }
+
+            if (storesAssignments) {
+                for (SourceAssignment sourceAssignment : sourceAssignments) {
+                    EmployeeAssignment assignment = existingAssignmentByUserId.get(sourceAssignment.sfUserId());
+                    boolean newAssignment = assignment == null;
+                    if (newAssignment) assignment = new EmployeeAssignment();
+                    assignment.setSysUserId(target.getId());
+                    assignment.setEmployeeId(empId);
+                    assignment.setSfUserId(sourceAssignment.sfUserId());
+                    assignment.setIsPrimaryAssignment(sourceAssignment.primary() ? 1 : 0);
+                    assignment.setSourceType(sourceType);
+                    assignment.setSourceActive(1);
+                    assignment.setSyncedAt(now);
+                    assignment.setDeleted(0);
+                    applyTargetValues(assignment, sourceAssignment.targetValues());
+                    if (newAssignment) employeeAssignmentMapper.insert(assignment);
+                    else employeeAssignmentMapper.updateById(assignment);
+                    existingAssignmentByUserId.put(sourceAssignment.sfUserId(), assignment);
+                    assignmentRows++;
+                }
+            }
         }
 
-        String msg = String.format("同步完成: 共 %d 条, 新增 %d, 更新 %d", allPersons.size(), inserted, updated);
+        String msg = storesAssignments
+                ? String.format("同步完成: 共 %d 人 / %d 个档案, 新增 %d 人, 更新 %d 人",
+                        assignmentsByEmployeeId.size(), assignmentRows, inserted, updated)
+                : String.format("同步完成: 共 %d 条, 新增 %d, 更新 %d", allPersons.size(), inserted, updated);
         log.info("[SYNC] {}", msg);
         return new SyncResult(allPersons.size(), inserted, updated, sourceType, msg);
     }
 
-    private Map<String, String> mapTokens(Map<String, Object> row,
-                                          Map<String, String> sourceToToken,
-                                          boolean isHrdc,
-                                          Map<String, String> companyLookup,
-                                          Map<String, String> locationLookup) {
-        Map<String, String> tokenValues = new LinkedHashMap<>();
-        for (Map.Entry<String, String> mapping : sourceToToken.entrySet()) {
+    private Map<String, String> mapTargetFields(Map<String, Object> row,
+                                                Map<String, String> sourceToTarget,
+                                                boolean isHrdc,
+                                                Map<String, String> companyLookup,
+                                                Map<String, String> locationLookup) {
+        Map<String, String> targetValues = new LinkedHashMap<>();
+        for (Map.Entry<String, String> mapping : sourceToTarget.entrySet()) {
             Object value = readPath(row, mapping.getKey());
             if (value == null) continue;
             String val = String.valueOf(value).trim();
@@ -213,33 +276,119 @@ public class MasterDataSyncService {
                     val = locationLookup.get(val);
                 }
             }
-            tokenValues.put(mapping.getValue(), val);
+            targetValues.put(mapping.getValue(), val);
         }
-        return tokenValues;
+        return targetValues;
     }
 
-    private void applyTokenValues(SysUser target, Map<String, String> tokenValues) {
-        target.setName(tokenValues.getOrDefault("name", target.getName()));
-        target.setDepartment(tokenValues.getOrDefault("department", target.getDepartment()));
-        target.setCountry(tokenValues.getOrDefault("country", target.getCountry()));
-        target.setCompanyName(tokenValues.getOrDefault("companyName", target.getCompanyName()));
-        target.setJobTitle(tokenValues.getOrDefault("jobTitle", target.getJobTitle()));
-        target.setPositionCode(tokenValues.getOrDefault("positionCode", target.getPositionCode()));
-        target.setDivision(tokenValues.getOrDefault("division", target.getDivision()));
-        target.setThirdDepartment(tokenValues.getOrDefault("thirdDepartment", target.getThirdDepartment()));
-        target.setFourthDepartment(tokenValues.getOrDefault("fourthDepartment", target.getFourthDepartment()));
-        target.setFifthDepartment(tokenValues.getOrDefault("fifthDepartment", target.getFifthDepartment()));
-        target.setLocation(tokenValues.getOrDefault("location", target.getLocation()));
-        target.setEmployeeType(tokenValues.getOrDefault("employeeType", target.getEmployeeType()));
-        target.setHireDate(tokenDate(tokenValues, "hireDate", target.getHireDate()));
-        target.setContractEndDate(tokenDate(tokenValues, "contractEndDate", target.getContractEndDate()));
-        target.setProbationEndDate(tokenDate(tokenValues, "probationEndDate", target.getProbationEndDate()));
-        target.setEmail(tokenValues.getOrDefault("email", target.getEmail()));
-        target.setPhone(tokenValues.getOrDefault("phone", target.getPhone()));
+    private void applyTargetValues(SysUser target, Map<String, String> targetValues) {
+        target.setName(targetValues.getOrDefault("name", target.getName()));
+        target.setDepartment(targetValues.getOrDefault("department", target.getDepartment()));
+        target.setCountry(targetValues.getOrDefault("country", target.getCountry()));
+        target.setCompanyName(targetValues.getOrDefault("companyName", target.getCompanyName()));
+        target.setJobTitle(targetValues.getOrDefault("jobTitle", target.getJobTitle()));
+        target.setPositionCode(targetValues.getOrDefault("positionCode", target.getPositionCode()));
+        target.setDivision(targetValues.getOrDefault("division", target.getDivision()));
+        target.setThirdDepartment(targetValues.getOrDefault("thirdDepartment", target.getThirdDepartment()));
+        target.setFourthDepartment(targetValues.getOrDefault("fourthDepartment", target.getFourthDepartment()));
+        target.setFifthDepartment(targetValues.getOrDefault("fifthDepartment", target.getFifthDepartment()));
+        target.setLocation(targetValues.getOrDefault("location", target.getLocation()));
+        target.setEmployeeType(targetValues.getOrDefault("employeeType", target.getEmployeeType()));
+        target.setAssignmentClass(targetValues.getOrDefault("assignmentClass", target.getAssignmentClass()));
+        target.setManagementJobLevel(targetValues.getOrDefault("managementJobLevel", target.getManagementJobLevel()));
+        target.setProfessionalJobLevel(targetValues.getOrDefault("professionalJobLevel", target.getProfessionalJobLevel()));
+        target.setJobGrade(targetValues.getOrDefault("jobGrade", target.getJobGrade()));
+        target.setDateOfBirth(targetDate(targetValues, "dateOfBirth", target.getDateOfBirth()));
+        target.setHireDate(targetDate(targetValues, "hireDate", target.getHireDate()));
+        target.setBenefitsEligibilityStartDate(targetDate(
+                targetValues, "benefitsEligibilityStartDate", target.getBenefitsEligibilityStartDate()));
+        target.setContractEndDate(targetDate(targetValues, "contractEndDate", target.getContractEndDate()));
+        target.setProbationEndDate(targetDate(targetValues, "probationEndDate", target.getProbationEndDate()));
+        target.setEmail(targetValues.getOrDefault("email", target.getEmail()));
+        target.setPhone(targetValues.getOrDefault("phone", target.getPhone()));
     }
 
-    private LocalDate tokenDate(Map<String, String> tokenValues, String key, LocalDate fallback) {
-        String value = tokenValues.get(key);
+    private void applyTargetValues(EmployeeAssignment target, Map<String, String> targetValues) {
+        target.setName(targetValues.getOrDefault("name", target.getName()));
+        target.setDepartment(targetValues.getOrDefault("department", target.getDepartment()));
+        target.setCountry(targetValues.getOrDefault("country", target.getCountry()));
+        target.setCompanyName(targetValues.getOrDefault("companyName", target.getCompanyName()));
+        target.setJobTitle(targetValues.getOrDefault("jobTitle", target.getJobTitle()));
+        target.setPositionCode(targetValues.getOrDefault("positionCode", target.getPositionCode()));
+        target.setDivision(targetValues.getOrDefault("division", target.getDivision()));
+        target.setThirdDepartment(targetValues.getOrDefault("thirdDepartment", target.getThirdDepartment()));
+        target.setFourthDepartment(targetValues.getOrDefault("fourthDepartment", target.getFourthDepartment()));
+        target.setFifthDepartment(targetValues.getOrDefault("fifthDepartment", target.getFifthDepartment()));
+        target.setLocation(targetValues.getOrDefault("location", target.getLocation()));
+        target.setEmployeeType(targetValues.getOrDefault("employeeType", target.getEmployeeType()));
+        target.setAssignmentClass(targetValues.getOrDefault("assignmentClass", target.getAssignmentClass()));
+        target.setManagementJobLevel(targetValues.getOrDefault("managementJobLevel", target.getManagementJobLevel()));
+        target.setProfessionalJobLevel(targetValues.getOrDefault("professionalJobLevel", target.getProfessionalJobLevel()));
+        target.setJobGrade(targetValues.getOrDefault("jobGrade", target.getJobGrade()));
+        target.setDateOfBirth(targetDate(targetValues, "dateOfBirth", target.getDateOfBirth()));
+        target.setHireDate(targetDate(targetValues, "hireDate", target.getHireDate()));
+        target.setBenefitsEligibilityStartDate(targetDate(
+                targetValues, "benefitsEligibilityStartDate", target.getBenefitsEligibilityStartDate()));
+        target.setContractEndDate(targetDate(targetValues, "contractEndDate", target.getContractEndDate()));
+        target.setProbationEndDate(targetDate(targetValues, "probationEndDate", target.getProbationEndDate()));
+        target.setEmail(targetValues.getOrDefault("email", target.getEmail()));
+        target.setPhone(targetValues.getOrDefault("phone", target.getPhone()));
+    }
+
+    private SourceAssignment selectProjectionAssignment(List<SourceAssignment> assignments) {
+        return assignments.stream().filter(SourceAssignment::primary).findFirst()
+                .orElseGet(() -> assignments.stream()
+                        .filter(row -> "ST".equalsIgnoreCase(row.targetValues().get("assignmentClass")))
+                        .findFirst()
+                        .orElse(assignments.get(0)));
+    }
+
+    /**
+     * SuccessFactors exposes person-level employment dates only on the Home (ST)
+     * assignment. Copy those values to every Host (GA) assignment so rule and
+     * template contexts keep the same dates after switching assignment profiles.
+     */
+    private List<SourceAssignment> inheritHomeDates(List<SourceAssignment> assignments) {
+        SourceAssignment home = assignments.stream()
+                .filter(row -> "ST".equalsIgnoreCase(row.targetValues().get("assignmentClass")))
+                .findFirst()
+                .orElse(null);
+        if (home == null) return assignments;
+
+        String hireDate = home.targetValues().get("hireDate");
+        String benefitsStartDate = home.targetValues().get("benefitsEligibilityStartDate");
+        if ((hireDate == null || hireDate.isBlank())
+                && (benefitsStartDate == null || benefitsStartDate.isBlank())) {
+            return assignments;
+        }
+
+        List<SourceAssignment> inherited = new ArrayList<>(assignments.size());
+        for (SourceAssignment assignment : assignments) {
+            if (!"GA".equalsIgnoreCase(assignment.targetValues().get("assignmentClass"))) {
+                inherited.add(assignment);
+                continue;
+            }
+            Map<String, String> targetValues = new LinkedHashMap<>(assignment.targetValues());
+            if (hireDate != null && !hireDate.isBlank()) targetValues.put("hireDate", hireDate);
+            if (benefitsStartDate != null && !benefitsStartDate.isBlank()) {
+                targetValues.put("benefitsEligibilityStartDate", benefitsStartDate);
+            }
+            inherited.add(new SourceAssignment(assignment.sfUserId(), assignment.primary(), targetValues));
+        }
+        return inherited;
+    }
+
+    private boolean sourceBoolean(Object value) {
+        if (value instanceof Boolean bool) return bool;
+        if (value instanceof Number number) return number.intValue() != 0;
+        return "true".equalsIgnoreCase(safeStr(value)) || "1".equals(safeStr(value));
+    }
+
+    private record SourceAssignment(String sfUserId, boolean primary, Map<String, String> targetValues) {
+    }
+
+    private LocalDate targetDate(Map<String, String> targetValues, String key, LocalDate fallback) {
+        String value = targetValues.get(key);
         if (value == null || value.isBlank()) return fallback;
         LocalDate parsed = parseSourceDate(value);
         if (parsed == null) {
@@ -266,37 +415,6 @@ public class MasterDataSyncService {
             return LocalDate.parse(text.length() >= 10 ? text.substring(0, 10) : text);
         } catch (RuntimeException ignored) {
             return null;
-        }
-    }
-
-    private void applySourceFallbacks(SysUser target, Map<String, Object> row, boolean isHrdc) {
-        if (target.getName() == null || target.getName().isBlank()) {
-            target.setName(firstNonBlank(
-                    safeStr(readPath(row, "nickname")),
-                    safeStr(readPath(row, "displayName")),
-                    safeStr(readPath(row, "name"))));
-        }
-        target.setEmail(sourceValueOrCurrent(target.getEmail(),
-                safeStr(readPath(row, isHrdc ? "emailAddress" : "email"))));
-        target.setPhone(sourceValueOrCurrent(target.getPhone(),
-                safeStr(readPath(row, isHrdc ? "phoneNumber" : "phone"))));
-        target.setJobTitle(sourceValueOrCurrent(target.getJobTitle(),
-                safeStr(readPath(row, "jobTitle"))));
-        if (!isHrdc) {
-            target.setPositionCode(sourceValueOrCurrent(target.getPositionCode(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/position"))));
-            target.setCompanyName(sourceValueOrCurrent(target.getCompanyName(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/company"))));
-            target.setCountry(sourceValueOrCurrent(target.getCountry(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/countryOfCompany"))));
-            target.setDepartment(sourceValueOrCurrent(target.getDepartment(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/department"))));
-            target.setThirdDepartment(sourceValueOrCurrent(target.getThirdDepartment(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/customString2"))));
-            target.setFourthDepartment(sourceValueOrCurrent(target.getFourthDepartment(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/customString12"))));
-            target.setFifthDepartment(sourceValueOrCurrent(target.getFifthDepartment(),
-                    safeStr(readPath(row, "empInfo/jobInfoNav/customString13"))));
         }
     }
 
@@ -561,19 +679,6 @@ public class MasterDataSyncService {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private String firstNonBlank(String... values) {
-        if (values == null) return null;
-        for (String value : values) {
-            if (value != null && !value.isBlank()) return value;
-        }
-        return null;
-    }
-
-    private String sourceValueOrCurrent(String current, String source) {
-        String normalized = blankToNull(source);
-        return normalized != null ? normalized : current;
-    }
-
     private boolean isPlatformLoginStatus(String status) {
         return "Active".equalsIgnoreCase(safeStr(status)) || "Inactive".equalsIgnoreCase(safeStr(status));
     }
@@ -687,7 +792,19 @@ public class MasterDataSyncService {
     }
 
     public Map<String, Map<String, String>> getTokenValuesByEmployeeIds(List<String> employeeIds) {
+        return getTokenValuesByEmployeeIds(employeeIds, null);
+    }
+
+    public Map<String, Map<String, String>> getTokenValuesByEmployeeIds(
+            List<String> employeeIds,
+            String assignmentExpressionJson) {
         if (employeeIds == null || employeeIds.isEmpty()) return Map.of();
+
+        if (employeeAssignmentService != null) {
+            Map<String, Map<String, String>> assignmentValues =
+                    employeeAssignmentService.tokenValues(employeeIds, assignmentExpressionJson);
+            if (assignmentValues != null && !assignmentValues.isEmpty()) return assignmentValues;
+        }
 
         List<SysUser> employees = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
                 .in(SysUser::getEmployeeId, employeeIds));
@@ -697,47 +814,9 @@ public class MasterDataSyncService {
             if (emp.getEmployeeId() == null || emp.getEmployeeId().isBlank()) {
                 continue;
             }
-            Map<String, String> tokens = new LinkedHashMap<>();
-            putTokenAliases(tokens, emp.getEmployeeId(), "EmployeeId", "employeeId");
-            putTokenAliases(tokens, emp.getName(), "Name", "name");
-            putTokenAliases(tokens, emp.getEmail(), "Email", "email");
-            putTokenAliases(tokens, emp.getPhone(), "Phone", "phone");
-            putTokenAliases(tokens, emp.getDepartment(), "Department", "department");
-            putTokenAliases(tokens, emp.getCountry(), "Country", "country");
-            putTokenAliases(tokens, emp.getCompanyName(), "CompanyName", "companyName");
-            putTokenAliases(tokens, emp.getJobTitle(), "JobTitle", "jobTitle");
-            putTokenAliases(tokens, emp.getPositionCode(), "PositionCode", "positionCode");
-            putTokenAliases(tokens, emp.getDivision(), "Division", "division");
-            putTokenAliases(tokens, emp.getThirdDepartment(), "ThirdDepartment", "thirdDepartment");
-            putTokenAliases(tokens, emp.getFourthDepartment(), "FourthDepartment", "fourthDepartment");
-            putTokenAliases(tokens, emp.getFifthDepartment(), "FifthDepartment", "fifthDepartment");
-            putTokenAliases(tokens, emp.getLocation(), "Location", "location");
-            putTokenAliases(tokens, emp.getEmployeeType(), "EmployeeType", "employeeType");
-            putTokenAliases(tokens, dateText(emp.getHireDate()), "HireDate", "hireDate");
-            putTokenAliases(tokens, dateText(emp.getContractEndDate()), "ContractEndDate", "contractEndDate");
-            putTokenAliases(tokens, dateText(emp.getProbationEndDate()), "ProbationEndDate", "probationEndDate");
-            putTokenAliases(tokens, emp.getDingtalkUserId(), "DingTalkUserId", "dingtalkUserId");
-            putTokenAliases(tokens, emp.getStatus(), "Status", "status");
-            putTokenAliases(tokens, emp.getSourceType(), "SourceType", "sourceType");
-            result.put(emp.getEmployeeId(), tokens);
+            result.put(emp.getEmployeeId(), UserMasterFieldCatalog.tokenValues(emp));
         }
         return result;
-    }
-
-    private String dateText(LocalDate value) {
-        return value == null ? null : value.toString();
-    }
-
-    private void putTokenAliases(Map<String, String> tokens, String value, String... aliases) {
-        String normalized = safeStr(value);
-        if (normalized.isEmpty()) {
-            return;
-        }
-        for (String alias : aliases) {
-            if (alias != null && !alias.isBlank()) {
-                tokens.put(alias, normalized);
-            }
-        }
     }
 
     public long count() {

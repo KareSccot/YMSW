@@ -56,7 +56,6 @@ class TaskTemplateConditionRuleValidationTest {
                 conditionRuleService,
                 mock(GovernanceService.class),
                 mock(AuditLogService.class),
-                mock(OdataService.class),
                 mock(TimeDependentService.class),
                 mock(TemplateManualFieldService.class));
     }

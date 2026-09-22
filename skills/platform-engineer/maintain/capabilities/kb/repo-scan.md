@@ -44,9 +44,9 @@ git ls-remote git@gitspace.wuxibiologics.com:devops/team-cicd.git HEAD
 ### 3. 浅克隆
 
 ```bash
-git clone --depth 1 "git@gitspace.wuxibiologics.com:devops/cicd-template.git" "~/Desktop/kb-cloned/cicd-template"
-git clone --depth 1 "git@gitspace.wuxibiologics.com:devops/gitlab-management.git" "~/Desktop/kb-cloned/gitlab-management"
-git clone --no-single-branch --depth 1 "git@gitspace.wuxibiologics.com:devops/team-cicd.git" "~/Desktop/kb-cloned/team-cicd"
+git clone --depth 1 "git@gitspace.wuxibiologics.com:devops/cicd-template.git" "~/Desktop/internJ/kb-cloned/cicd-template"
+git clone --depth 1 "git@gitspace.wuxibiologics.com:devops/gitlab-management.git" "~/Desktop/internJ/kb-cloned/gitlab-management"
+git clone --no-single-branch --depth 1 "git@gitspace.wuxibiologics.com:devops/team-cicd.git" "~/Desktop/internJ/kb-cloned/team-cicd"
 ```
 
 **增量重扫**：不重新克隆，在原目录上 `git fetch --unshallow && git fetch origin --no-single-branch`。
@@ -68,7 +68,7 @@ git clone --no-single-branch --depth 1 "git@gitspace.wuxibiologics.com:devops/te
     {
       "url": "git@gitspace.wuxibiologics.com:devops/cicd-template.git",
       "branch": "master",
-      "local_path": "~/Desktop/kb-cloned/cicd-template",
+      "local_path": "~/Desktop/internJ/kb-cloned/cicd-template",
       "commit_sha": "<sha>",
       "domain_hint": "cicd",
       "scope": [".", "docs/"],
@@ -78,11 +78,11 @@ git clone --no-single-branch --depth 1 "git@gitspace.wuxibiologics.com:devops/te
 }
 ```
 
-获取 sha：`git -C ~/Desktop/kb-cloned/<project-name> rev-parse HEAD`
+获取 sha：`git -C ~/Desktop/internJ/kb-cloned/<project-name> rev-parse HEAD`
 
 多分支仓库（team-cicd）额外记录 `branch_heads`：逐分支 `git rev-parse origin/<branch-name>`。
 
-写入 `~/Desktop/kb-cloned/manifest.json`。
+写入 `~/Desktop/internJ/kb-cloned/manifest.json`。
 
 ## 自定义仓库
 

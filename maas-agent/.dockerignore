@@ -1,0 +1,17 @@
+# CI 构建上下文瘦身 + 凭证卫生(Dockerfile 只 COPY 声明的路径,
+# 但 build context 会整个发给 docker daemon:k8s dind 下 .venv/.git 白传几十 MB,
+# config.local.json / manifests/ 含真实凭证,不该进 context)
+.git
+.venv
+**/__pycache__
+**/*.py[cod]
+*.egg-info
+.pytest_cache
+design
+scripts
+manifests
+config.local.json
+.env
+*.local
+consumer_types.csv
+*.db

@@ -6,10 +6,12 @@ import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.dto.SenderMailboxRequest;
 import com.wuxibio.care.dto.SenderMailboxResponse;
 import com.wuxibio.care.entity.SenderMailbox;
+import com.wuxibio.care.entity.SysUser;
 import com.wuxibio.care.entity.TemplateHeader;
 import com.wuxibio.care.mapper.SenderMailboxMapper;
 import com.wuxibio.care.mapper.TemplateHeaderMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -27,16 +29,28 @@ public class SenderMailboxService {
     private final SensitiveDataCryptoService cryptoService;
     private final ExternalConnectionService connectionService;
     private final TemplateHeaderMapper templateHeaderMapper;
+    private final MailboxOwnerResolver ownerResolver;
 
+    @Autowired
     public SenderMailboxService(
             SenderMailboxMapper mailboxMapper,
             SensitiveDataCryptoService cryptoService,
             ExternalConnectionService connectionService,
-            TemplateHeaderMapper templateHeaderMapper) {
+            TemplateHeaderMapper templateHeaderMapper,
+            MailboxOwnerResolver ownerResolver) {
         this.mailboxMapper = mailboxMapper;
         this.cryptoService = cryptoService;
         this.connectionService = connectionService;
         this.templateHeaderMapper = templateHeaderMapper;
+        this.ownerResolver = ownerResolver;
+    }
+
+    SenderMailboxService(
+            SenderMailboxMapper mailboxMapper,
+            SensitiveDataCryptoService cryptoService,
+            ExternalConnectionService connectionService,
+            TemplateHeaderMapper templateHeaderMapper) {
+        this(mailboxMapper, cryptoService, connectionService, templateHeaderMapper, null);
     }
 
     public List<SenderMailboxResponse> listAll() {
@@ -71,6 +85,7 @@ public class SenderMailboxService {
         mailbox.setUsername(trim(request.getUsername()));
         mailbox.setUseSsl(request.getUseSsl() == null ? 1 : request.getUseSsl());
         mailbox.setStatus(normalizeStatus(request.getStatus()));
+        mailbox.setOwnerEmployeeId(requireOwner(request.getOwnerEmployeeId()).getEmployeeId());
         mailbox.setFromAddress(defaultIfBlank(request.getFromAddress(), mailbox.getUsername()));
         mailbox.setFromName(defaultIfBlank(request.getFromName(), "员工认可管理平台"));
         mailbox.setTestRecipientWhitelist(trimToNull(request.getTestRecipientWhitelist()));
@@ -95,6 +110,9 @@ public class SenderMailboxService {
         if (request.getUsername() != null) effective.setUsername(trim(request.getUsername()));
         if (request.getUseSsl() != null) effective.setUseSsl(request.getUseSsl());
         if (request.getStatus() != null) effective.setStatus(normalizeStatus(request.getStatus()));
+        if (request.getOwnerEmployeeId() != null) {
+            effective.setOwnerEmployeeId(requireOwner(request.getOwnerEmployeeId()).getEmployeeId());
+        }
         if (request.getFromAddress() != null) effective.setFromAddress(defaultIfBlank(request.getFromAddress(), effective.getUsername()));
         if (request.getFromName() != null) effective.setFromName(defaultIfBlank(request.getFromName(), "员工认可管理平台"));
         if (request.getTestRecipientWhitelist() != null) effective.setTestRecipientWhitelist(trimToNull(request.getTestRecipientWhitelist()));
@@ -113,6 +131,7 @@ public class SenderMailboxService {
         update.setUsername(effective.getUsername());
         update.setUseSsl(effective.getUseSsl());
         update.setStatus(effective.getStatus());
+        update.setOwnerEmployeeId(effective.getOwnerEmployeeId());
         update.setFromAddress(effective.getFromAddress());
         update.setFromName(effective.getFromName());
         update.setTestRecipientWhitelist(effective.getTestRecipientWhitelist());
@@ -211,6 +230,7 @@ public class SenderMailboxService {
     }
 
     private SenderMailboxResponse toResponse(SenderMailbox mailbox) {
+        SysUser owner = ownerResolver == null ? null : ownerResolver.findByEmployeeId(mailbox.getOwnerEmployeeId());
         return new SenderMailboxResponse(
                 mailbox.getId(),
                 mailbox.getName(),
@@ -220,6 +240,10 @@ public class SenderMailboxService {
                 mailbox.getUseSsl(),
                 mailbox.getIsDefault(),
                 mailbox.getStatus(),
+                mailbox.getOwnerEmployeeId(),
+                owner == null ? null : owner.getId(),
+                owner == null ? null : owner.getName(),
+                owner == null ? null : owner.getUsername(),
                 defaultIfBlank(mailbox.getFromAddress(), mailbox.getUsername()),
                 defaultIfBlank(mailbox.getFromName(), "员工认可管理平台"),
                 mailbox.getTestRecipientWhitelist(),
@@ -240,7 +264,10 @@ public class SenderMailboxService {
                 && mailbox.getSmtpPort() > 0
                 && mailbox.getSmtpPort() <= 65535
                 && !trim(mailbox.getUsername()).isBlank()
-                && !trim(mailbox.getPassword()).isBlank();
+                && !trim(mailbox.getPassword()).isBlank()
+                && !trim(mailbox.getOwnerEmployeeId()).isBlank()
+                && ownerResolver != null
+                && ownerResolver.isEligibleEmployeeId(mailbox.getOwnerEmployeeId());
     }
 
     private void validate(SenderMailbox mailbox, boolean requirePassword) {
@@ -262,6 +289,7 @@ public class SenderMailboxService {
         if (!STATUS_ACTIVE.equals(mailbox.getStatus()) && !STATUS_INACTIVE.equals(mailbox.getStatus())) {
             throw new BizException("发件箱状态仅支持 Active/Inactive");
         }
+        requireOwner(mailbox.getOwnerEmployeeId());
     }
 
     private SenderMailbox copyOf(SenderMailbox source) {
@@ -275,12 +303,20 @@ public class SenderMailboxService {
         target.setUseSsl(source.getUseSsl());
         target.setIsDefault(source.getIsDefault());
         target.setStatus(source.getStatus() == null ? STATUS_ACTIVE : source.getStatus());
+        target.setOwnerEmployeeId(source.getOwnerEmployeeId());
         target.setFromAddress(source.getFromAddress());
         target.setFromName(source.getFromName());
         target.setTestRecipientWhitelist(source.getTestRecipientWhitelist());
         target.setEmailBlacklist(source.getEmailBlacklist());
         target.setEmailWhitelist(source.getEmailWhitelist());
         return target;
+    }
+
+    private SysUser requireOwner(String employeeId) {
+        if (ownerResolver == null) {
+            throw new BizException("邮箱 Owner 解析服务不可用");
+        }
+        return ownerResolver.requireByEmployeeId(employeeId);
     }
 
     private String normalizeStatus(String status) {

@@ -35,6 +35,7 @@ public class EmailChannel implements MessageChannel {
     private static final String LETTERHEAD_MARKER = "data-rp-email-letterhead=\"true\"";
     private static final Pattern LETTERHEAD_WIDTH_PATTERN = Pattern.compile("data-rp-email-letterhead-width=\"(\\d+)\"");
     private static final Pattern LETTERHEAD_HEIGHT_PATTERN = Pattern.compile("data-rp-email-letterhead-height=\"(\\d+)\"");
+    private static final Pattern EMAIL_PAGE_ALIGN_PATTERN = Pattern.compile("data-rp-email-page-align=\"(left|center|right)\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern IMG_TAG_PATTERN = Pattern.compile("<img\\b[^>]*>", Pattern.CASE_INSENSITIVE);
     // Matches absolute, context-prefixed, relative, and cid references to stored template images.
     private static final Pattern IMAGE_REF_PATTERN = Pattern.compile(
@@ -426,7 +427,7 @@ public class EmailChannel implements MessageChannel {
                 log.warn("[EMAIL] Letterhead image is large and may be delayed or blocked by mail gateways, size={} ({})",
                         pngBytes.length, formatBytes(pngBytes.length));
             }
-            return new LetterheadImageFallback(cid, pngBytes, canvas.width(), canvas.height());
+            return new LetterheadImageFallback(cid, pngBytes, canvas.width(), canvas.height(), parseEmailPageAlign(html));
         } catch (Exception e) {
             log.error("[EMAIL] Failed to render letterhead image fallback: {}", e.getMessage());
             throw new RuntimeException("邮件信纸图片生成失败: " + e.getMessage(), e);
@@ -435,12 +436,18 @@ public class EmailChannel implements MessageChannel {
 
     private String buildLetterheadImageOnlyHtml(LetterheadImageFallback fallback) {
         return "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%;border-collapse:collapse;\">"
-                + "<tr><td align=\"center\" style=\"padding:0;\">"
+                + "<tr><td align=\"" + fallback.align() + "\" style=\"padding:0;text-align:" + fallback.align() + ";\">"
                 + "<img src=\"cid:" + fallback.cid() + "\" width=\"" + fallback.width() + "\" height=\"" + fallback.height()
                 + "\" style=\"display:block;width:" + fallback.width() + "px;height:" + fallback.height()
                 + "px;border:0;outline:none;text-decoration:none;\" alt=\"\" />"
                 + "</td></tr></table>"
                 + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;\">&nbsp;</div>";
+    }
+
+    private String parseEmailPageAlign(String html) {
+        if (html == null) return "center";
+        Matcher matcher = EMAIL_PAGE_ALIGN_PATTERN.matcher(html);
+        return matcher.find() ? matcher.group(1).toLowerCase(Locale.ROOT) : "center";
     }
 
     private EmailCanvas parseLetterheadCanvas(String html) {
@@ -506,7 +513,7 @@ public class EmailChannel implements MessageChannel {
     private record PreparedEmailMessage(MimeMessage message, int inlineImageCount, LetterheadImageFallback letterheadImageFallback) {
     }
 
-    private record LetterheadImageFallback(String cid, byte[] pngBytes, int width, int height) {
+    private record LetterheadImageFallback(String cid, byte[] pngBytes, int width, int height, String align) {
     }
 
     private record EmailCanvas(int width, int height) {

@@ -50,19 +50,15 @@ public class OdataService {
 
     // ==================== Field Mapping per-config ====================
 
-    private Map<String, String> getSourceFieldToTokenMapForConfig(Long queryConfigId) {
-        return fieldMappingService.getSourceFieldToTokenMapByConfig(queryConfigId);
+    private Map<String, String> getSourceFieldToTargetFieldMapForConfig(Long queryConfigId) {
+        return fieldMappingService.getSourceFieldToTargetFieldMapByConfig(queryConfigId);
     }
 
     private Set<String> getSourceFieldsForConfig(Long queryConfigId) {
-        return fieldMappingService.getTokenToSourceFieldMapByConfig(queryConfigId)
+        return fieldMappingService.getTargetFieldToSourceFieldMapByConfig(queryConfigId)
                 .values().stream()
                 .filter(f -> f != null && !f.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    public Set<String> getSystemTokenKeys() {
-        return fieldMappingService.getSystemTokenKeys();
     }
 
     // ==================== Query Config CRUD ====================
@@ -249,14 +245,20 @@ public class OdataService {
 
     /**
      * Fetch employee data from the active query data source by a list of employee IDs.
-     * Returns Map<employeeId, Map<tokenKey, value>>.
+     * Returns local employee-master values expanded with supported template aliases.
      */
     public Map<String, Map<String, String>> fetchEmployeesByIds(List<String> employeeIds) {
+        return fetchEmployeesByIds(employeeIds, null);
+    }
+
+    public Map<String, Map<String, String>> fetchEmployeesByIds(
+            List<String> employeeIds,
+            String assignmentExpressionJson) {
         if (employeeIds == null || employeeIds.isEmpty()) return Map.of();
 
         // Prefer local master data
         Map<String, Map<String, String>> fetchedLocalResult =
-                masterDataSyncService.getTokenValuesByEmployeeIds(employeeIds);
+                masterDataSyncService.getTokenValuesByEmployeeIds(employeeIds, assignmentExpressionJson);
         Map<String, Map<String, String>> localResult = fetchedLocalResult != null ? fetchedLocalResult : Map.of();
         if (localResult.size() >= employeeIds.size()) {
             log.info("[QUERY] All {} employees resolved from local master data", employeeIds.size());
@@ -284,7 +286,7 @@ public class OdataService {
         if ("HRDC".equalsIgnoreCase(conn.getType())) {
             externalResult = fetchEmployeesFromHrdcByIds(config, connCfg, missing);
         } else if ("SuccessFactors".equalsIgnoreCase(conn.getType())) {
-            externalResult = fetchEmployeesFromOdataByIds(config, connCfg, missing);
+            externalResult = fetchEmployeesFromOdataByIds(config, connCfg, missing, assignmentExpressionJson);
         } else {
             throw new BizException("查询配置不支持该连接类型: " + conn.getType());
         }
@@ -296,7 +298,10 @@ public class OdataService {
     }
 
     private Map<String, Map<String, String>> fetchEmployeesFromOdataByIds(
-            QueryConfig config, Map<String, String> connCfg, List<String> employeeIds) {
+            QueryConfig config,
+            Map<String, String> connCfg,
+            List<String> employeeIds,
+            String assignmentExpressionJson) {
         String apiBaseUrl = connCfg.get("apiBaseUrl");
         if (apiBaseUrl == null) throw new BizException("SF 连接缺少 apiBaseUrl");
 
@@ -312,6 +317,8 @@ public class OdataService {
                 .map(this::toOdataSelectPath)
                 .filter(path -> !path.isBlank())
                 .forEach(selectFieldSet::add);
+        selectFieldSet.add("userId");
+        selectFieldSet.add("isPrimaryAssignment");
         String selectFields = String.join(",", selectFieldSet);
         Set<String> allExpandPaths = selectFieldSet.stream()
                 .map(this::toOdataExpandPath)
@@ -322,7 +329,7 @@ public class OdataService {
                         .noneMatch(other -> !other.equals(path) && other.startsWith(path + "/")))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        Map<String, Map<String, String>> allResults = new LinkedHashMap<>();
+        Map<String, List<ExternalAssignmentTokens>> candidatesByEmployeeId = new LinkedHashMap<>();
         int batchSize = 50;
         for (int i = 0; i < employeeIds.size(); i += batchSize) {
             List<String> batch = employeeIds.subList(i, Math.min(i + batchSize, employeeIds.size()));
@@ -333,7 +340,7 @@ public class OdataService {
             String url = "User?$filter=" + filter
                     + "&$select=" + selectFields
                     + (expandFieldSet.isEmpty() ? "" : "&$expand=" + String.join(",", expandFieldSet))
-                    + "&$format=json&$top=" + batch.size();
+                    + "&$format=json&$top=" + Math.max(500, batch.size() * 10);
 
             String fullUrl = buildFullUrl(apiBaseUrl, url);
             log.info("[ODATA] Fetching employees batch {}-{}: {}", i, i + batch.size(), fullUrl);
@@ -362,7 +369,7 @@ public class OdataService {
                 List<Map<String, Object>> results = (List<Map<String, Object>>) d.get("results");
                 if (results == null) continue;
 
-                Map<String, String> odataToToken = getSourceFieldToTokenMapForConfig(config.getId());
+                Map<String, String> sourceToTarget = getSourceFieldToTargetFieldMapForConfig(config.getId());
 
                 for (Map<String, Object> employee : results) {
                     Object empIdValue = readPath(employee, idField);
@@ -370,7 +377,7 @@ public class OdataService {
                     if (empId.isEmpty()) continue;
 
                     Map<String, String> tokenValues = new LinkedHashMap<>();
-                    for (Map.Entry<String, String> mapping : odataToToken.entrySet()) {
+                    for (Map.Entry<String, String> mapping : sourceToTarget.entrySet()) {
                         Object value = readPath(employee, mapping.getKey());
                         if (value != null) {
                             String val = formatOdataValue(value);
@@ -381,14 +388,50 @@ public class OdataService {
                     }
                     tokenValues.putIfAbsent("EmployeeId", empId);
                     tokenValues.putIfAbsent("employeeId", empId);
-                    allResults.put(empId, tokenValues);
+                    UserMasterFieldCatalog.expandTemplateAliases(tokenValues);
+                    candidatesByEmployeeId.computeIfAbsent(empId, ignored -> new ArrayList<>())
+                            .add(new ExternalAssignmentTokens(
+                                    tokenValues,
+                                    safeStr(tokenValues.get("AssignmentClass")),
+                                    sourceBoolean(readPath(employee, "isPrimaryAssignment"))));
                 }
             } catch (Exception e) {
                 log.error("[ODATA] Batch query error: {}", e.getMessage(), e);
             }
         }
 
-        return allResults;
+        AssignmentSelectionPolicy.Mode mode = AssignmentSelectionPolicy.fromExpression(assignmentExpressionJson);
+        Map<String, Map<String, String>> selected = new LinkedHashMap<>();
+        candidatesByEmployeeId.forEach((employeeId, candidates) -> selectExternalCandidate(candidates, mode)
+                .ifPresent(candidate -> selected.put(employeeId, candidate.tokens())));
+        return selected;
+    }
+
+    private Optional<ExternalAssignmentTokens> selectExternalCandidate(
+            List<ExternalAssignmentTokens> candidates,
+            AssignmentSelectionPolicy.Mode mode) {
+        if (candidates == null || candidates.isEmpty()) return Optional.empty();
+        Optional<ExternalAssignmentTokens> selected = switch (mode) {
+            case HOME -> candidates.stream().filter(row -> "ST".equalsIgnoreCase(row.assignmentClass())).findFirst();
+            case HOST_PRIMARY -> candidates.stream()
+                    .filter(row -> row.primary() && "GA".equalsIgnoreCase(row.assignmentClass())).findFirst();
+            case PRIMARY -> candidates.stream().filter(ExternalAssignmentTokens::primary).findFirst();
+        };
+        if (selected.isPresent() || mode != AssignmentSelectionPolicy.Mode.PRIMARY) return selected;
+        return candidates.stream().filter(row -> "ST".equalsIgnoreCase(row.assignmentClass())).findFirst()
+                .or(() -> candidates.stream().findFirst());
+    }
+
+    private boolean sourceBoolean(Object value) {
+        if (value instanceof Boolean bool) return bool;
+        if (value instanceof Number number) return number.intValue() != 0;
+        return "true".equalsIgnoreCase(safeStr(value)) || "1".equals(safeStr(value));
+    }
+
+    private record ExternalAssignmentTokens(
+            Map<String, String> tokens,
+            String assignmentClass,
+            boolean primary) {
     }
 
     private Map<String, Map<String, String>> fetchEmployeesFromHrdcByIds(
@@ -410,7 +453,7 @@ public class OdataService {
         if (wanted.isEmpty()) return Map.of();
 
         String personUrl = buildExternalUrl(connCfg.get("baseUrl"), queryPath);
-        Map<String, String> sourceToToken = getSourceFieldToTokenMapForConfig(config.getId());
+        Map<String, String> sourceToTarget = getSourceFieldToTargetFieldMapForConfig(config.getId());
 
         // Fetch persons page-by-page, collect only matching employeeIds
         Map<String, Map<String, Object>> matchedPersons = new LinkedHashMap<>();
@@ -467,9 +510,9 @@ public class OdataService {
             Map<String, Object> row = entry.getValue();
             Map<String, String> tokenValues = new LinkedHashMap<>();
 
-            for (Map.Entry<String, String> mapping : sourceToToken.entrySet()) {
+            for (Map.Entry<String, String> mapping : sourceToTarget.entrySet()) {
                 String srcField = mapping.getKey();
-                String tokenKey = mapping.getValue();
+                String targetField = mapping.getValue();
                 Object value = readPath(row, srcField);
                 if (value != null) {
                     String val = formatOdataValue(value);
@@ -480,13 +523,14 @@ public class OdataService {
                         } else if ("location".equals(srcField) && locationNames.containsKey(val)) {
                             val = locationNames.get(val);
                         }
-                        tokenValues.put(tokenKey, val);
+                        tokenValues.put(targetField, val);
                     }
                 }
             }
 
             tokenValues.putIfAbsent("EmployeeId", empId);
             tokenValues.putIfAbsent("employeeId", empId);
+            UserMasterFieldCatalog.expandTemplateAliases(tokenValues);
             allResults.put(empId, tokenValues);
         }
 

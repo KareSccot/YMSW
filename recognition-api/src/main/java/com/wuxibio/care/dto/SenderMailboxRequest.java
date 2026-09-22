@@ -8,6 +8,7 @@ public class SenderMailboxRequest {
     private String password;
     private Integer useSsl;
     private String status;
+    private String ownerEmployeeId;
     private String fromAddress;
     private String fromName;
     private String testRecipientWhitelist;
@@ -28,6 +29,8 @@ public class SenderMailboxRequest {
     public void setUseSsl(Integer useSsl) { this.useSsl = useSsl; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getOwnerEmployeeId() { return ownerEmployeeId; }
+    public void setOwnerEmployeeId(String ownerEmployeeId) { this.ownerEmployeeId = ownerEmployeeId; }
     public String getFromAddress() { return fromAddress; }
     public void setFromAddress(String fromAddress) { this.fromAddress = fromAddress; }
     public String getFromName() { return fromName; }

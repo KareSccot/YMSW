@@ -3,6 +3,7 @@ package com.wuxibio.care.controller;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.mapper.SysUserMapper;
 import com.wuxibio.care.security.SecurityUtil;
+import com.wuxibio.care.service.ApprovalAudienceExportService;
 import com.wuxibio.care.service.ApprovalWorkflowService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.TaskGovernanceService;
@@ -11,12 +12,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -28,17 +36,20 @@ class TaskGovernanceControllerApprovalListTest {
 
     private TaskGovernanceService taskGovernanceService;
     private FunctionPermissionGuard permissionGuard;
+    private ApprovalAudienceExportService approvalAudienceExportService;
     private TaskGovernanceController controller;
 
     @BeforeEach
     void setUp() {
         taskGovernanceService = mock(TaskGovernanceService.class);
         permissionGuard = mock(FunctionPermissionGuard.class);
+        approvalAudienceExportService = mock(ApprovalAudienceExportService.class);
         controller = new TaskGovernanceController(
                 taskGovernanceService,
                 mock(ApprovalWorkflowService.class),
                 permissionGuard,
-                mock(SysUserMapper.class));
+                mock(SysUserMapper.class),
+                approvalAudienceExportService);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(42L, null, List.of(() -> "ROLE_USER")));
     }
@@ -142,5 +153,34 @@ class TaskGovernanceControllerApprovalListTest {
 
         assertEquals(3L, result.getData());
         verify(taskGovernanceService).countPendingApprovalsForApprover(42L);
+    }
+
+    @Test
+    void exportApprovalRecipients_exposesXlsxRouteAndDelegatesCompleteSnapshot() throws Exception {
+        Method method = TaskGovernanceController.class.getDeclaredMethod(
+                "exportApprovalRecipients",
+                Long.class,
+                Locale.class,
+                jakarta.servlet.http.HttpServletResponse.class);
+        assertArrayEquals(
+                new String[]{"/approvals/{id}/recipients/export"},
+                method.getAnnotation(GetMapping.class).value());
+        when(permissionGuard.hasAny(
+                FunctionPermissionGuard.TASK_GOVERNANCE_MANAGE,
+                FunctionPermissionGuard.APPROVAL_TRACK)).thenReturn(false);
+        when(approvalAudienceExportService.filename(88L)).thenReturn("approval-88-recipients.xlsx");
+        when(approvalAudienceExportService.export(
+                eq(88L), eq(42L), eq(false), any(OutputStream.class), eq(Locale.SIMPLIFIED_CHINESE)))
+                .thenReturn(new ApprovalAudienceExportService.ExportDescriptor(
+                        "approval-88-recipients.xlsx", 10));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        controller.exportApprovalRecipients(88L, Locale.SIMPLIFIED_CHINESE, response);
+
+        assertEquals(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                response.getContentType());
+        verify(approvalAudienceExportService).export(
+                eq(88L), eq(42L), eq(false), any(OutputStream.class), eq(Locale.SIMPLIFIED_CHINESE));
     }
 }

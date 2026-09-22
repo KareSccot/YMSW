@@ -46,7 +46,7 @@ class FieldMappingControllerTest {
 
     @Test
     void currentPageEndpointsDeclareFineGrainedPermissions() throws NoSuchMethodException {
-        assertRequires(FieldMappingController.class.getDeclaredMethod("listTokenKeys"),
+        assertRequires(FieldMappingController.class.getDeclaredMethod("listTargetFields"),
                 FunctionPermissionGuard.FIELD_MAPPING_VIEW);
         assertRequires(FieldMappingController.class.getDeclaredMethod("listQueryConfigOptions"),
                 FunctionPermissionGuard.FIELD_MAPPING_VIEW);

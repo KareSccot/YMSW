@@ -3,9 +3,11 @@ package com.wuxibio.care.controller;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.common.PageResult;
 import com.wuxibio.care.common.R;
+import com.wuxibio.care.entity.EmployeeAssignment;
 import com.wuxibio.care.entity.SysUser;
 import com.wuxibio.care.security.SecurityUtil;
 import com.wuxibio.care.service.DingTalkDirectorySyncService;
+import com.wuxibio.care.service.EmployeeAssignmentService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.MasterDataSyncService;
 import com.wuxibio.care.service.SysUserService;
@@ -21,15 +23,18 @@ public class SysUserController {
 
     private final SysUserService userService;
     private final MasterDataSyncService syncService;
+    private final EmployeeAssignmentService employeeAssignmentService;
     private final DingTalkDirectorySyncService dingTalkDirectorySyncService;
     private final FunctionPermissionGuard permissionGuard;
 
     public SysUserController(SysUserService userService,
                              MasterDataSyncService syncService,
+                             EmployeeAssignmentService employeeAssignmentService,
                              DingTalkDirectorySyncService dingTalkDirectorySyncService,
                              FunctionPermissionGuard permissionGuard) {
         this.userService = userService;
         this.syncService = syncService;
+        this.employeeAssignmentService = employeeAssignmentService;
         this.dingTalkDirectorySyncService = dingTalkDirectorySyncService;
         this.permissionGuard = permissionGuard;
     }
@@ -52,6 +57,12 @@ public class SysUserController {
     public R<SysUser> getById(@PathVariable("id") Long id) {
         requireUserManage();
         return R.ok(userService.getById(id));
+    }
+
+    @GetMapping("/{id}/assignments")
+    public R<List<EmployeeAssignment>> getAssignments(@PathVariable("id") Long id) {
+        requireUserManage();
+        return R.ok(employeeAssignmentService.listForUser(id));
     }
 
     @GetMapping("/{id}/roles")
@@ -80,7 +91,13 @@ public class SysUserController {
         user.setPositionCode((String) body.get("positionCode"));
         user.setLocation((String) body.get("location"));
         user.setEmployeeType((String) body.get("employeeType"));
+        user.setAssignmentClass((String) body.get("assignmentClass"));
+        user.setManagementJobLevel((String) body.get("managementJobLevel"));
+        user.setProfessionalJobLevel((String) body.get("professionalJobLevel"));
+        user.setJobGrade((String) body.get("jobGrade"));
+        user.setDateOfBirth(date(body.get("dateOfBirth")));
         user.setHireDate(date(body.get("hireDate")));
+        user.setBenefitsEligibilityStartDate(date(body.get("benefitsEligibilityStartDate")));
         user.setContractEndDate(date(body.get("contractEndDate")));
         user.setProbationEndDate(date(body.get("probationEndDate")));
         user.setEmployeeId((String) body.get("employeeId"));

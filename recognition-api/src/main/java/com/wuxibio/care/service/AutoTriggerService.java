@@ -42,7 +42,9 @@ public class AutoTriggerService {
             "EmployeeId", "Name", "Username", "Email", "Phone", "Department", "Country", "CompanyName",
             "JobTitle", "Division", "ThirdDepartment", "FourthDepartment", "FifthDepartment",
             "Location", "SourceType", "DingTalkUserId", "Status",
-            "EmployeeType", "HireDate", "ContractEndDate", "ProbationEndDate", "EvaluationDate", "Today");
+            "EmployeeType", "AssignmentClass", "ManagementJobLevel", "ProfessionalJobLevel", "JobGrade",
+            "DateOfBirth", "HireDate", "BenefitsEligibilityStartDate", "ContractEndDate", "ProbationEndDate",
+            "EvaluationDate", "Today");
 
     private final AutoTriggerDefMapper triggerMapper;
     private final AutoTriggerRunLogMapper runLogMapper;
@@ -406,7 +408,7 @@ public class AutoTriggerService {
             throw new BizException("Auto Trigger 无法提供规则所需字段: " + String.join(", ", missingFields));
         }
         LocalDate date = evaluationDate == null ? LocalDate.now() : evaluationDate;
-        List<SysUser> candidates = listActiveEmployeeCandidates();
+        List<SysUser> candidates = conditionRuleService.ruleContexts(conditionRuleVersionId, null);
         List<Map<String, String>> matchedRows = new ArrayList<>();
         List<Map<String, Object>> undetermined = new ArrayList<>();
         for (SysUser user : candidates) {
@@ -465,7 +467,7 @@ public class AutoTriggerService {
             throw new BizException("Task Template 发送范围需要未接入字段: " + String.join(", ", missingFields));
         }
         List<Map<String, String>> rows = new ArrayList<>();
-        for (SysUser user : listActiveEmployeeCandidates()) {
+        for (SysUser user : conditionRuleService.ruleContexts(conditionRuleVersionId, null)) {
             Map<String, String> row = employeeRow(user, evaluationDate);
             ConditionExpressionService.EvaluationResult result = conditionRuleService.evaluateVersion(
                     conditionRuleVersionId, row, evaluationDate);
@@ -504,7 +506,13 @@ public class AutoTriggerService {
         row.put("FifthDepartment", safe(user.getFifthDepartment()));
         row.put("Location", safe(user.getLocation()));
         row.put("EmployeeType", safe(user.getEmployeeType()));
+        row.put("AssignmentClass", safe(user.getAssignmentClass()));
+        row.put("ManagementJobLevel", safe(user.getManagementJobLevel()));
+        row.put("ProfessionalJobLevel", safe(user.getProfessionalJobLevel()));
+        row.put("JobGrade", safe(user.getJobGrade()));
+        row.put("DateOfBirth", dateText(user.getDateOfBirth()));
         row.put("HireDate", dateText(user.getHireDate()));
+        row.put("BenefitsEligibilityStartDate", dateText(user.getBenefitsEligibilityStartDate()));
         row.put("ContractEndDate", dateText(user.getContractEndDate()));
         row.put("ProbationEndDate", dateText(user.getProbationEndDate()));
         row.put("SourceType", safe(user.getSourceType()));

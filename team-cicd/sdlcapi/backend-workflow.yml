@@ -1,0 +1,31 @@
+include:
+  - project: 'devops/cicd-template'
+    ref: feat/deploy-docker
+    file: '/workflows/app-workflow.yml'
+
+variables:
+  BUILD_CONTAINER: "true"
+
+
+deploy-container-uat:
+  when: on_success
+
+deploy-dev:
+      rules:
+        - when: never
+
+build-app:
+      rules:
+        - when: never
+
+SAST:
+  rules:
+    - when: never
+
+
+default:
+  tags:
+    - mno 
+    - platform 
+    - shared 
+    - tencent

@@ -1,0 +1,59 @@
+{
+  "scan_timestamp": "2026-09-08T10:17:47+08:00",
+  "repos": [
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/cicd-template.git",
+      "branch": "Master",
+      "local_path": "~/Desktop/internJ/kb-cloned/cicd-template",
+      "commit_sha": "1266de4ce0bf7e078e803c56fe3340818e52c3b9",
+      "domain_hint": "cicd",
+      "scope": [
+        ".",
+        "docs/"
+      ],
+      "kb_namespace": "devops-cicd-template"
+    },
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/gitlab-management.git",
+      "branch": "main",
+      "local_path": "~/Desktop/internJ/kb-cloned/gitlab-management",
+      "commit_sha": "2756a116e916ca142c6a3ca9bcba8487a805e723",
+      "domain_hint": "cicd",
+      "scope": [
+        ".",
+        "docs/"
+      ],
+      "kb_namespace": "devops-gitlab-management"
+    },
+    {
+      "url": "git@gitspace.wuxibiologics.com:devops/team-cicd.git",
+      "branch": "all-branches",
+      "local_path": "~/Desktop/internJ/kb-cloned/team-cicd",
+      "commit_sha": "801ca3be6e276b37f03c0f0a0a72c9fa91e2c8b4",
+      "domain_hint": "cicd",
+      "scope": [
+        ".",
+        "docs/"
+      ],
+      "kb_namespace": "devops-team-cicd",
+      "branch_heads": {
+        "Master": "801ca3be6e276b37f03c0f0a0a72c9fa91e2c8b4",
+        "docker-test": "e229645541accd13cf3c82f6a88e63be9f50c49d",
+        "feat/ariba": "76cfd088674c68ca91722c869efdda778254e202",
+        "feat/atlas-team": "387633af2d7c10eb51facaf0b060b30c31863363",
+        "feat/axiom": "bdd8f77f5f46c3ec4e87824c7fe0e9b5b917c5ca",
+        "feat/demojava-enable-sast": "75fd930afa21a741fa9735ea28eea5b576078009",
+        "feat/dfs-sciwriter-team": "7eda8d80e23320a2585e4b6eeb82b780046ac79a",
+        "feat/dpdo-dev-team": "a750b0a6f5fcc46b64abbb33cac6329ec9fb196a",
+        "feat/dvcopilot": "f9c6e91147d9bbb1a4b9ffc9929a21a12a1d66b1",
+        "feat/init_sci_writer_team": "88e4241e2d06e6ccd5f7b50423db82afc6dca42b",
+        "feat/isrm-appsec": "c5afc4176c3ae82b1b0e625cd20d890312110a2f",
+        "feat/official-website": "19daca904a6242888db53e0f77fbebf2cf27d2b3",
+        "feat/pipeline-pms": "0d3754c988625e01df689bf5ee0516729ee9b046",
+        "feat/pipeline-tag-test": "36dee83fb7291d6878c60fa588b9b4a3fdf448de",
+        "feat/python": "6368936453d41af2917d81461642b1c9fefd6d43",
+        "pipeline-pms": "a66760d401c545ca39beb1af1f18e72b2cf0aaf2"
+      }
+    }
+  ]
+}

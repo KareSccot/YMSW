@@ -24,9 +24,9 @@ skills/
 │       │   └── kb/               # KB 生成 2 模块
 │       ├── resources/
 │       │   ├── templates/        # 16 个模板
-│       │   ├── references/       # 文档参考 + knowledge-base/
+│       │   ├── references/       # 文档参考（含 ci-troubleshooting 排障指南、base-image-catalog）+ knowledge-base/
 │       │   └── snippets/         # 脚本片段
-│       ├── regression-check.sh   # 自动化回归脚本（6 项检查）
+│       ├── regression-check.sh   # 自动化回归脚本（7 项检查）
 │       ├── alignment-standard.md # 对齐标准
 │       └── user-entry/           # 用户入口源
 │           ├── SKILL.md          # 用户接入入口
@@ -49,8 +49,9 @@ skills/
 1. **初始化**（Step 0）— 问项目名、语言栈、部署目标（VM 还是 ArgoCD）、新项目还是已有项目
 2. **前置收集** — 收 ENV_PREFIX、DEPLOY_USER 两个基础参数
 3. **选流程** — VM 准备 / CI 生成 / 反馈通道，用户选
-4. **执行** — 按选择 Read 对应 capability 模块，生成 .gitlab-ci.yml / Dockerfile / docker-compose.yml / runbook / Variables 清单
-5. **收尾** — 汇总产出，提示下一步；**占位符实际值确认关卡**：扫描生成的 CI 三件套，未确认实际值的占位符按来源（IT/运维、平台、VM 准备）列清单标红，没确认完不标 done
+4. **前置说明**（选 CI 后）— 先展示「为什么需要这些配置」+「配置从哪来」两张表，区分基础设施值（找 IT/运维）vs 应用密钥（自己管），再进执行
+5. **执行** — 按选择 Read 对应 capability 模块，生成 .gitlab-ci.yml / Dockerfile / docker-compose.yml / runbook / Variables 清单
+6. **收尾** — 汇总产出，提示下一步；**生成后衔接链路**列清 push→CI→TCR→部署→验证 的后续步骤；**占位符实际值确认关卡**：扫描生成的 CI 三件套，未确认实际值的占位符按来源（IT/运维、平台、VM 准备）列清单标红，没确认完不标 done
 
 两条部署路径：VM Docker（build → docker package → SSH 到 VM compose up）和前端 ArgoCD/K8s（6 条 CI 规则 + CD 侧 app-deployments YAML）。
 
@@ -65,6 +66,8 @@ skills/
 | 知识库 | maintain/capabilities/kb/ | 重生成 KB、增量更新、版本管理 |
 | 用户主流程 | maintain/user-entry/ | 调整初始化引导问题、修改流程编排、更新能力描述、调整转交逻辑 |
 | 结构变更 | maintain/（全局骨架） | 新增/删除模块、新增/删除类别、新增/删除模板、目录结构变化 |
+
+CI 场景下还内置 **分支策略指引（C3）**：一张判断表说明 master 改了什么会自动带过去、什么必须在 tag 分支单独再改（job 结构性改动 master 带过去，部署环境 + 镜像 tag 规则 tag 分支必须单独定）。
 
 **maintain/ 是唯一真源**。所有 capabilities、templates、references、snippets 在 `maintain/` 一处维护。改完后跑 `bash platform-engineer/build.sh`，自动生成 `user-cicd/` 分发包。分发版运行时自包含——路径相对各自 SKILL.md 根解析，不跨目录引用。
 
@@ -89,7 +92,7 @@ AI 版带完整 frontmatter（kb_id / domain / audience / layer / flow / source 
 ### 平台维护
 
 - 不直连生产服务器 — VM 维护只输出 runbook
-- 不绕过回归门控 — 改完必跑 maintain/regression-check.sh（6 项检查，含结构一致性双向匹配）
+- 不绕过回归门控 — 改完必跑 maintain/regression-check.sh（7 项检查，含结构一致性双向匹配 + 合规 job 两处交叉比对）
 - 不在维护时顺手做结构改动 — 结构改动必须走场景五：结构变更同步清单，跑完回归门控才允许提交
 - KB 生成不暴露内网地址或凭证 — SSH only，零 token
 - 不生成未经源文件校验的知识 — 所有 KB 内容有源文件出处
@@ -114,12 +117,12 @@ skill 自包含，无外部依赖。各 SKILL.md 的 description 字段列了触
 
 1. 在 `platform-engineer/maintain/` 改对应模块
 2. 跑 `bash platform-engineer/build.sh` 构建分发包（生成 user-cicd/）
-3. 跑 `bash platform-engineer/maintain/regression-check.sh` 逐项验证（路径可达 / 编码 / 接口契约 / CJK / 结构一致性，共 6 项）
+3. 跑 `bash platform-engineer/maintain/regression-check.sh` 逐项验证（路径可达 / 接口契约 / 提问协议 / 模板 / 编码格式 / 结构一致性 / 合规 job 交叉比对，共 7 项）
 4. 验收通过再上线
 
 对齐标准和质量标尺见 `platform-engineer/maintain/alignment-standard.md`。
 
-## 走查脚本
+## 走查与演示
 
 `eval/walkthroughs/` 下有双视角走查文档，演示完整使用流程：
 
@@ -127,3 +130,11 @@ skill 自包含，无外部依赖。各 SKILL.md 的 description 字段列了触
 |---|---|---|
 | walkthrough-user-cicd.md | 用户接入 | Step0 初始化 → 选流程 → 执行（10 个 capability 全覆盖）→ 收尾 |
 | walkthrough-platform-ci-cd.md | 平台维护 | CI 维护（base-image 更新）+ CD 维护（新建前端 ArgoCD，6 条规则 + 2 YAML + 5 人工红线） |
+
+`eval/demos/` 下有录屏演示（含录屏教程 + cast + 转出的 GIF）：
+
+| 目录 | 内容 |
+|---|---|
+| demos/ariba-demo/ | 真实项目 ariba-srmp-ui 从零接入 CI 全过程（user-cicd 视角） |
+| demos/regression-demo/ | 回归门控演示：基线全绿 → 故意断链 → 回归报错 → 修复 → 全绿（平台维护视角） |
+| demos/platform-demo/ | 平台维护演示 |

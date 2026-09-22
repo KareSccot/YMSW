@@ -127,7 +127,7 @@ class OdataServiceTest {
                 {"d":{"results":[{"userId":"E1001","CompanyName":"WuXi Biologics"}]}}
                 """, rawQuery);
         configureActiveConnection("http://127.0.0.1:" + server.getAddress().getPort());
-        when(fieldMappingMapper.selectList(any())).thenReturn(List.of(fieldMapping("CompanyName", "CompanyName")));
+        when(fieldMappingMapper.selectList(any())).thenReturn(List.of(fieldMapping("CompanyName", "companyName")));
 
         Map<String, Map<String, String>> employees = service.fetchEmployeesByIds(List.of("E1001"));
 
@@ -241,7 +241,7 @@ class OdataServiceTest {
     private FieldMapping fieldMapping(String odataField, String tokenKey) {
         FieldMapping mapping = new FieldMapping();
         mapping.setSourceField(odataField);
-        mapping.setTokenKey(tokenKey);
+        mapping.setTargetField(tokenKey);
         return mapping;
     }
 

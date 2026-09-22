@@ -3,23 +3,41 @@ package com.wuxibio.care.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.TemplateChannelVariant;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class TemplateRenderService {
 
+    private static final int EMAIL_V2_MIN_CANVAS_WIDTH = 320;
+    private static final int EMAIL_V2_MAX_CANVAS_WIDTH = 2400;
+    private static final int EMAIL_V2_MIN_CANVAS_HEIGHT = 320;
+    private static final int EMAIL_V2_MAX_CANVAS_HEIGHT = 4000;
     private static final Pattern TOKEN_PATTERN = Pattern.compile("\\{\\{([^}]+)}}");
+    private static final Pattern UNITLESS_LINE_HEIGHT_PATTERN = Pattern.compile(
+            "(line-height\\s*:\\s*)([0-9]+(?:\\.[0-9]+)?)(?=\\s*(?:!important\\s*)?[;\\\"'])",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern PARAGRAPH_OPEN_TAG_PATTERN = Pattern.compile(
+            "<p(?:\\s[^>]*)?>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern STYLE_ATTRIBUTE_PATTERN = Pattern.compile(
+            "\\bstyle\\s*=\\s*([\\\"'])(.*?)\\1",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final TemplateTokenService templateTokenService;
 
@@ -138,7 +156,10 @@ public class TemplateRenderService {
 
     public String renderVariantBodyContent(TemplateChannelVariant variant, Map<String, String> tokenValues) {
         String baseHtml = variant.getContent() == null ? "" : variant.getContent();
-        if (hasRenderableDesign(variant.getDesignJson(), variant.getBackgroundImageUrl())) {
+        EmailEditorV2 emailEditorV2 = parseEmailEditorV2(variant);
+        if (emailEditorV2 != null) {
+            baseHtml = buildEmailEditorV2Html(emailEditorV2, variant.getBackgroundImageUrl());
+        } else if (hasRenderableDesign(variant.getDesignJson(), variant.getBackgroundImageUrl())) {
             try {
                 baseHtml = buildComposedVariantHtml(variant.getDesignJson(), variant.getBackgroundImageUrl());
             } catch (Exception ignored) {
@@ -226,6 +247,293 @@ public class TemplateRenderService {
         out.append(contentHtml);
         out.append("</div></div></div></div>");
         return out.toString();
+    }
+
+    private EmailEditorV2 parseEmailEditorV2(TemplateChannelVariant variant) {
+        if (variant == null || !"Email".equals(variant.getChannel())) return null;
+        if (variant.getChannelPayloadJson() == null || variant.getChannelPayloadJson().isBlank()) return null;
+        if (variant.getDesignJson() == null || variant.getDesignJson().isBlank()) return null;
+        try {
+            JsonNode messageRoot = objectMapper.readTree(variant.getChannelPayloadJson());
+            JsonNode designRoot = objectMapper.readTree(variant.getDesignJson());
+            JsonNode editorDesign = designRoot.path("emailEditorV2");
+            if (messageRoot.path("version").asInt(0) != 2 || editorDesign.path("version").asInt(0) != 2) {
+                return null;
+            }
+
+            String sendMode = "poster_image".equals(messageRoot.path("sendMode").asText())
+                    ? "poster_image"
+                    : "interactive_html";
+            String preset = normalizeEmailV2Preset(editorDesign.path("canvasPreset").asText("square"));
+            String heightMode = normalizeEmailV2HeightMode(editorDesign.path("heightMode").asText("fixed"));
+            String pageAlign = normalizeEmailV2PageAlign(editorDesign.path("pageAlign").asText("center"));
+            int presetWidth = emailV2PresetWidth(preset);
+            int presetHeight = emailV2PresetHeight(preset);
+            int customWidth = Math.max(EMAIL_V2_MIN_CANVAS_WIDTH, Math.min(
+                    EMAIL_V2_MAX_CANVAS_WIDTH,
+                    editorDesign.path("customWidth").asInt(presetWidth)));
+            int customHeight = Math.max(EMAIL_V2_MIN_CANVAS_HEIGHT, Math.min(
+                    EMAIL_V2_MAX_CANVAS_HEIGHT,
+                    editorDesign.path("customHeight").asInt(presetHeight)));
+            int canvasWidth = "custom".equals(heightMode) ? customWidth : presetWidth;
+            int bottomSafeSpace = Math.max(0, Math.min(400, editorDesign.path("bottomSafeSpace").asInt(48)));
+            JsonNode background = editorDesign.path("background");
+            int positionX = Math.max(0, Math.min(100, background.path("positionX").asInt(50)));
+            int positionY = Math.max(0, Math.min(100, background.path("positionY").asInt(50)));
+            double opacity = clamp(background.path("opacity").asDouble(1.0), 0.1, 1.0);
+
+            Map<String, String> htmlById = new LinkedHashMap<>();
+            JsonNode rawContentAreas = messageRoot.path("bodyAreas");
+            if (rawContentAreas.isArray()) {
+                for (JsonNode area : rawContentAreas) {
+                    String id = area.path("id").asText("").trim();
+                    if (!id.isBlank()) htmlById.put(id, area.path("html").asText(""));
+                }
+            }
+
+            List<EmailBodyAreaV2> areas = new ArrayList<>();
+            JsonNode rawGeometryAreas = editorDesign.path("bodyAreas");
+            if (rawGeometryAreas.isArray()) {
+                for (JsonNode area : rawGeometryAreas) {
+                    String id = area.path("id").asText("").trim();
+                    if (id.isBlank()) continue;
+                    int x = Math.max(0, Math.min(canvasWidth - 120, area.path("x").asInt(72)));
+                    int y = Math.max(0, Math.min(EMAIL_V2_MAX_CANVAS_HEIGHT - 72, area.path("y").asInt(84)));
+                    int width = Math.max(120, Math.min(canvasWidth - x, area.path("width").asInt(756)));
+                    int height = Math.max(72, Math.min(
+                            EMAIL_V2_MAX_CANVAS_HEIGHT - y,
+                            area.path("height").asInt(240)));
+                    areas.add(new EmailBodyAreaV2(id, x, y, width, height, htmlById.getOrDefault(id, "")));
+                }
+            }
+            if (areas.isEmpty()) return null;
+            areas.sort(Comparator.comparingInt(EmailBodyAreaV2::y));
+
+            int canvasHeight;
+            if ("custom".equals(heightMode)) {
+                canvasHeight = customHeight;
+            } else if ("content_fit".equals(heightMode)) {
+                int contentBottom = areas.stream().mapToInt(area -> area.y() + area.height()).max().orElse(0);
+                canvasHeight = Math.max(presetHeight, contentBottom + bottomSafeSpace);
+            } else {
+                canvasHeight = presetHeight;
+            }
+            canvasHeight = Math.max(EMAIL_V2_MIN_CANVAS_HEIGHT, Math.min(EMAIL_V2_MAX_CANVAS_HEIGHT, canvasHeight));
+            return new EmailEditorV2(
+                    sendMode,
+                    preset,
+                    heightMode,
+                    pageAlign,
+                    canvasWidth,
+                    canvasHeight,
+                    bottomSafeSpace,
+                    positionX,
+                    positionY,
+                    opacity,
+                    List.copyOf(areas));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String buildEmailEditorV2Html(EmailEditorV2 editor, String backgroundImageUrl) {
+        return "poster_image".equals(editor.sendMode())
+                ? buildEmailEditorV2PosterHtml(editor, backgroundImageUrl)
+                : buildEmailEditorV2InteractiveHtml(editor, backgroundImageUrl);
+    }
+
+    private String buildEmailEditorV2InteractiveHtml(EmailEditorV2 editor, String backgroundImageUrl) {
+        String background = backgroundImageUrl == null ? "" : escapeHtmlAttr(backgroundImageUrl);
+        StringBuilder out = new StringBuilder();
+        out.append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%;border-collapse:collapse;\">")
+                .append("<tr><td align=\"").append(editor.pageAlign()).append("\" style=\"padding:0;text-align:")
+                .append(editor.pageAlign()).append(";\">");
+        if (!background.isBlank()) {
+            out.append("<!--[if gte mso 9]>")
+                    .append("<v:rect xmlns:v=\"urn:schemas-microsoft-com:vml\" fill=\"true\" stroke=\"false\" style=\"width:")
+                    .append(editor.width()).append("px;height:").append(editor.height()).append("px;\">")
+                    .append("<v:fill type=\"frame\" aspect=\"atleast\" src=\"").append(background)
+                    .append("\" color=\"#ffffff\" opacity=\"")
+                    .append(Math.round(editor.opacity() * 100)).append("%\" focusposition=\"")
+                    .append(String.format(Locale.ROOT, "%.3f", editor.positionX() / 100.0)).append(",")
+                    .append(String.format(Locale.ROOT, "%.3f", editor.positionY() / 100.0)).append("\" />")
+                    .append("<v:textbox inset=\"0,0,0,0\"><![endif]-->");
+        }
+        out.append("<table data-rp-email-editor-v2=\"true\" data-rp-email-v2-mode=\"interactive_html\" data-rp-email-page-align=\"")
+                .append(editor.pageAlign()).append("\" role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"")
+                .append(editor.width()).append("\" height=\"").append(editor.height()).append("\"");
+        if (!background.isBlank()) {
+            out.append(" background=\"").append(background).append("\"");
+        }
+        out.append(" style=\"width:").append(editor.width()).append("px;max-width:100%;height:")
+                .append(editor.height()).append("px;table-layout:fixed;border-collapse:collapse;");
+        if (!background.isBlank()) {
+            out.append("background-color:transparent;");
+            double veil = 1.0 - editor.opacity();
+            if (veil > 0.001) {
+                out.append("background-image:linear-gradient(rgba(255,255,255,")
+                        .append(String.format(Locale.ROOT, "%.3f", veil))
+                        .append("),rgba(255,255,255,")
+                        .append(String.format(Locale.ROOT, "%.3f", veil))
+                        .append(")),url('").append(background).append("');");
+            } else {
+                out.append("background-image:url('").append(background).append("');");
+            }
+            out.append("background-size:cover;background-repeat:no-repeat;background-position:")
+                    .append(editor.positionX()).append("% ").append(editor.positionY()).append("%;");
+        } else {
+            out.append("background-color:#ffffff;");
+        }
+        out.append("\">");
+
+        int cursorY = 0;
+        for (EmailBodyAreaV2 area : editor.areas()) {
+            int spacer = Math.max(0, area.y() - cursorY);
+            if (spacer > 0) {
+                out.append("<tr><td height=\"").append(spacer)
+                        .append("\" style=\"height:").append(spacer)
+                        .append("px;font-size:0;line-height:0;mso-line-height-rule:exactly;background-color:transparent;\">&nbsp;</td></tr>");
+            }
+            int right = Math.max(0, editor.width() - area.x() - area.width());
+            out.append("<tr><td data-rp-email-body-area=\"").append(escapeHtmlAttr(area.id()))
+                    .append("\" height=\"").append(area.height()).append("\" valign=\"top\" style=\"box-sizing:border-box;height:")
+                    .append(area.height()).append("px;padding:0 ").append(right).append("px 0 ").append(area.x())
+                    .append("px;mso-padding-alt:0 ").append(right).append("px 0 ").append(area.x())
+                    .append("px;vertical-align:top;text-align:left;overflow:hidden;overflow-wrap:anywhere;background-color:transparent;color:#0f172a;font-family:Arial,'Microsoft YaHei',sans-serif;\">")
+                    .append(normalizeInteractiveEmailBodyHtml(area.html())).append("</td></tr>");
+            cursorY = Math.max(cursorY, area.y() + area.height());
+        }
+        int trailing = Math.max(0, editor.height() - cursorY);
+        if (trailing > 0) {
+            out.append("<tr><td height=\"").append(trailing)
+                    .append("\" style=\"height:").append(trailing)
+                    .append("px;font-size:0;line-height:0;mso-line-height-rule:exactly;background-color:transparent;\">&nbsp;</td></tr>");
+        }
+        out.append("</table>");
+        if (!background.isBlank()) {
+            out.append("<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->");
+        }
+        out.append("</td></tr></table>");
+        return out.toString();
+    }
+
+    private String normalizeOutlookLineHeight(String html) {
+        if (html == null || html.isBlank()) return html == null ? "" : html;
+        Matcher matcher = UNITLESS_LINE_HEIGHT_PATTERN.matcher(html);
+        StringBuffer normalized = new StringBuffer();
+        while (matcher.find()) {
+            double value;
+            try {
+                value = Double.parseDouble(matcher.group(2));
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (value < 0.5 || value > 4.0) continue;
+            String replacement = matcher.group(1) + Math.round(value * 100) + "%";
+            matcher.appendReplacement(normalized, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(normalized);
+        return normalized.toString();
+    }
+
+    private String normalizeInteractiveEmailBodyHtml(String html) {
+        return normalizeOutlookLineHeight(normalizeEmailParagraphSpacing(html));
+    }
+
+    private String normalizeEmailParagraphSpacing(String html) {
+        if (html == null || html.isBlank()) return html == null ? "" : html;
+        Matcher paragraphMatcher = PARAGRAPH_OPEN_TAG_PATTERN.matcher(html);
+        StringBuffer normalized = new StringBuffer();
+        while (paragraphMatcher.find()) {
+            String tag = paragraphMatcher.group();
+            Matcher styleMatcher = STYLE_ATTRIBUTE_PATTERN.matcher(tag);
+            String normalizedTag;
+            String spacing = "margin-top:0;margin-bottom:0;mso-margin-top-alt:0;mso-margin-bottom-alt:0;";
+            if (styleMatcher.find()) {
+                String currentStyle = styleMatcher.group(2).trim();
+                String separator = currentStyle.isEmpty() || currentStyle.endsWith(";") ? "" : ";";
+                String nextStyle = currentStyle + separator + spacing;
+                normalizedTag = tag.substring(0, styleMatcher.start(2))
+                        + nextStyle
+                        + tag.substring(styleMatcher.end(2));
+            } else {
+                normalizedTag = tag.substring(0, tag.length() - 1)
+                        + " style=\"" + spacing + "\">";
+            }
+            paragraphMatcher.appendReplacement(normalized, Matcher.quoteReplacement(normalizedTag));
+        }
+        paragraphMatcher.appendTail(normalized);
+        return normalized.toString();
+    }
+
+    private String buildEmailEditorV2PosterHtml(EmailEditorV2 editor, String backgroundImageUrl) {
+        String background = backgroundImageUrl == null ? "" : escapeHtmlAttr(backgroundImageUrl);
+        StringBuilder out = new StringBuilder();
+        out.append("<div data-rp-email-editor-v2=\"true\" data-rp-email-v2-mode=\"poster_image\" data-rp-email-page-align=\"")
+                .append(editor.pageAlign()).append("\" data-rp-email-letterhead=\"true\" data-rp-email-letterhead-width=\"")
+                .append(editor.width()).append("\" data-rp-email-letterhead-height=\"").append(editor.height())
+                .append("\" style=\"position:relative;box-sizing:border-box;width:").append(editor.width())
+                .append("px;height:").append(editor.height()).append("px;overflow:hidden;background:#ffffff;\">");
+        if (!background.isBlank()) {
+            out.append("<img src=\"").append(background)
+                    .append("\" alt=\"\" aria-hidden=\"true\" style=\"position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;object-position:")
+                    .append(editor.positionX()).append("% ").append(editor.positionY()).append("%;opacity:")
+                    .append(String.format(Locale.ROOT, "%.3f", editor.opacity())).append(";\" />");
+        }
+        for (EmailBodyAreaV2 area : editor.areas()) {
+            out.append("<div data-rp-email-body-area=\"").append(escapeHtmlAttr(area.id()))
+                    .append("\" style=\"position:absolute;box-sizing:border-box;left:").append(area.x())
+                    .append("px;top:").append(area.y()).append("px;width:").append(area.width())
+                    .append("px;height:").append(area.height())
+                    .append("px;overflow:hidden;overflow-wrap:anywhere;text-align:left;color:#0f172a;font-family:Arial,'Microsoft YaHei',sans-serif;\">")
+                    .append(normalizeEmailParagraphSpacing(area.html())).append("</div>");
+        }
+        out.append("</div>");
+        return out.toString();
+    }
+
+    private String normalizeEmailV2Preset(String value) {
+        if ("landscape".equals(value) || "long".equals(value) || "square".equals(value)) return value;
+        return "square";
+    }
+
+    private int emailV2PresetWidth(String preset) {
+        return 900;
+    }
+
+    private int emailV2PresetHeight(String preset) {
+        return switch (preset) {
+            case "landscape" -> 675;
+            case "long" -> 1200;
+            default -> 900;
+        };
+    }
+
+    private String normalizeEmailV2HeightMode(String value) {
+        if ("custom".equals(value) || "content_fit".equals(value) || "fixed".equals(value)) return value;
+        return "fixed";
+    }
+
+    private String normalizeEmailV2PageAlign(String value) {
+        if ("left".equals(value) || "right".equals(value) || "center".equals(value)) return value;
+        return "center";
+    }
+
+    private record EmailBodyAreaV2(String id, int x, int y, int width, int height, String html) {
+    }
+
+    private record EmailEditorV2(
+            String sendMode,
+            String preset,
+            String heightMode,
+            String pageAlign,
+            int width,
+            int height,
+            int bottomSafeSpace,
+            int positionX,
+            int positionY,
+            double opacity,
+            List<EmailBodyAreaV2> areas) {
     }
 
     private static final class EmailLetterhead {
@@ -429,14 +737,22 @@ public class TemplateRenderService {
 
     public Map<String, String> buildTestTokenValues(Map<String, String> sampleData) {
         Map<String, String> values = new LinkedHashMap<>();
-        for (TemplateTokenService.BuiltinToken token : templateTokenService.getSystemTokens()) {
-            values.put(token.key(), token.previewValue() == null ? "" : token.previewValue());
+        for (String key : templateTokenService.getSystemTokenKeys()) {
+            values.put(key, "");
         }
         values.put("Date", LocalDate.now().toString());
         if (sampleData != null) {
             sampleData.forEach((k, v) -> values.put(k, v == null ? "" : v));
         }
         return values;
+    }
+
+    public List<TemplateTokenService.BuiltinToken> getSystemTokens() {
+        return templateTokenService.getSystemTokens();
+    }
+
+    public Map<String, String> getSystemTokenPreviewValues() {
+        return templateTokenService.getSystemTokenPreviewValues();
     }
 
     public String normalizeBackgroundImageUrl(String rawUrl) {
@@ -454,6 +770,76 @@ public class TemplateRenderService {
         throw new BizException("背景图必须为有效 http/https 链接或 data URI");
     }
 
+    public String normalizeEmailChannelPayloadV2(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            if (!root.isObject() || root.path("version").asInt(0) != 2) {
+                throw new BizException("邮件编辑器数据必须使用 V2 结构");
+            }
+            String sendMode = "poster_image".equals(root.path("sendMode").asText())
+                    ? "poster_image"
+                    : "interactive_html";
+            JsonNode rawAreas = root.path("bodyAreas");
+            if (!rawAreas.isArray() || rawAreas.isEmpty() || rawAreas.size() > 20) {
+                throw new BizException("邮件正文区域数量必须为 1 到 20 个");
+            }
+
+            ObjectNode normalized = objectMapper.createObjectNode();
+            normalized.put("version", 2);
+            normalized.put("sendMode", sendMode);
+            ArrayNode areas = normalized.putArray("bodyAreas");
+            Set<String> ids = new HashSet<>();
+            for (JsonNode rawArea : rawAreas) {
+                String id = rawArea.path("id").asText("").trim();
+                if (!id.matches("[A-Za-z0-9_-]{1,80}") || !ids.add(id)) {
+                    throw new BizException("邮件正文区域 ID 不合法或重复");
+                }
+                String html = rawArea.path("html").asText("");
+                if (html.length() > 200_000) {
+                    throw new BizException("单个邮件正文区域内容过长");
+                }
+                if ("poster_image".equals(sendMode) && Pattern.compile("<a\\b[^>]*href\\s*=", Pattern.CASE_INSENSITIVE).matcher(html).find()) {
+                    throw new BizException("图片海报模式不会保留正文链接，请移除链接或切换为交互式 HTML 信纸");
+                }
+                ObjectNode area = areas.addObject();
+                area.put("id", id);
+                area.put("html", html);
+            }
+            return objectMapper.writeValueAsString(normalized);
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException("邮件编辑器数据必须为有效 JSON");
+        }
+    }
+
+    public void validateEmailEditorV2Contract(String designJson, String channelPayloadJson) {
+        if (channelPayloadJson == null || channelPayloadJson.isBlank()) return;
+        try {
+            JsonNode design = objectMapper.readTree(designJson == null ? "{}" : designJson).path("emailEditorV2");
+            JsonNode message = objectMapper.readTree(channelPayloadJson);
+            if (design.path("version").asInt(0) != 2 || message.path("version").asInt(0) != 2) {
+                throw new BizException("邮件编辑器设计与正文必须同时使用 V2 结构");
+            }
+            Set<String> geometryIds = new HashSet<>();
+            for (JsonNode area : design.path("bodyAreas")) {
+                geometryIds.add(area.path("id").asText(""));
+            }
+            Set<String> contentIds = new HashSet<>();
+            for (JsonNode area : message.path("bodyAreas")) {
+                contentIds.add(area.path("id").asText(""));
+            }
+            if (!geometryIds.equals(contentIds)) {
+                throw new BizException("邮件正文区域的布局 ID 与内容 ID 必须完全一致");
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException("邮件编辑器 V2 合同校验失败");
+        }
+    }
+
     public String normalizeDesignJson(String rawJson) {
         if (rawJson == null || rawJson.isBlank()) {
             return "{}";
@@ -464,7 +850,13 @@ public class TemplateRenderService {
             ObjectNode normalized = objectMapper.valueToTree(ctx);
             JsonNode dingTalkUiState = root.get("dingTalkUiState");
             if (dingTalkUiState != null && dingTalkUiState.isObject()) {
-                normalized.set("dingTalkUiState", dingTalkUiState.deepCopy());
+                ObjectNode normalizedDingTalkUiState = dingTalkUiState.deepCopy();
+                normalizeDingTalkLinkCrop(normalizedDingTalkUiState);
+                normalized.set("dingTalkUiState", normalizedDingTalkUiState);
+            }
+            JsonNode dingTalkLandingPage = root.get("dingTalkLandingPage");
+            if (dingTalkLandingPage != null && dingTalkLandingPage.isObject()) {
+                normalized.set("dingTalkLandingPage", dingTalkLandingPage.deepCopy());
             }
             ObjectNode emailLetterhead = normalizeEmailLetterheadNode(root.get("emailLetterhead"));
             if (emailLetterhead != null) {
@@ -474,10 +866,46 @@ public class TemplateRenderService {
             if (emailBodyLayout != null) {
                 normalized.set("emailBodyLayout", emailBodyLayout);
             }
+            ObjectNode emailEditorV2 = normalizeEmailEditorV2Node(root.get("emailEditorV2"));
+            if (emailEditorV2 != null) {
+                normalized.set("emailEditorV2", emailEditorV2);
+                normalized.put("canvasWidth", calculateEmailEditorV2CanvasWidth(emailEditorV2));
+                normalized.put("canvasHeight", calculateEmailEditorV2CanvasHeight(emailEditorV2));
+                normalized.set("layers", objectMapper.createArrayNode());
+            }
             return objectMapper.writeValueAsString(normalized);
+        } catch (BizException e) {
+            throw e;
         } catch (Exception e) {
             throw new BizException("设计器数据必须为有效 JSON 格式且符合规约");
         }
+    }
+
+    private void normalizeDingTalkLinkCrop(ObjectNode dingTalkUiState) {
+        JsonNode rawLink = dingTalkUiState.get("link");
+        if (!(rawLink instanceof ObjectNode link)) return;
+        JsonNode rawCrop = link.get("crop");
+        if (rawCrop == null || !rawCrop.isObject()) return;
+
+        double x = clamp(asDouble(rawCrop.get("x"), 50), 0, 100);
+        double y = clamp(asDouble(rawCrop.get("y"), 50), 0, 100);
+        double width = clamp(asDouble(rawCrop.get("width"), 100), 0, 100);
+        double height = clamp(asDouble(rawCrop.get("height"), 100), 0, 100);
+        String sourceUrl = asString(rawCrop.get("sourceUrl"), "");
+        boolean legacyUntouchedCrop = sourceUrl.isBlank()
+                && x == 0
+                && y == 0
+                && width == 100
+                && height == 100;
+
+        ObjectNode crop = objectMapper.createObjectNode();
+        crop.put("x", legacyUntouchedCrop ? 50 : x);
+        crop.put("y", legacyUntouchedCrop ? 50 : y);
+        crop.put("width", width);
+        crop.put("height", height);
+        crop.put("zoom", clamp(asDouble(rawCrop.get("zoom"), 100), 100, 250));
+        crop.put("sourceUrl", sourceUrl);
+        link.set("crop", crop);
     }
 
     private ObjectNode normalizeEmailLetterheadNode(JsonNode raw) {
@@ -514,6 +942,113 @@ public class TemplateRenderService {
         normalized.put("paddingBottom", Math.max(0, asInt(raw.get("paddingBottom"), 0)));
         normalized.put("paddingLeft", Math.max(0, asInt(raw.get("paddingLeft"), fallbackHorizontal)));
         return normalized;
+    }
+
+    private ObjectNode normalizeEmailEditorV2Node(JsonNode raw) {
+        if (raw == null || !raw.isObject()) return null;
+        if (raw.path("version").asInt(0) != 2) {
+            throw new BizException("邮件编辑器设计数据必须使用 V2 结构");
+        }
+        String preset = normalizeEmailV2Preset(raw.path("canvasPreset").asText("square"));
+        String heightMode = normalizeEmailV2HeightMode(raw.path("heightMode").asText("fixed"));
+        String pageAlign = normalizeEmailV2PageAlign(raw.path("pageAlign").asText("center"));
+        int presetWidth = emailV2PresetWidth(preset);
+        int presetHeight = emailV2PresetHeight(preset);
+        int customWidth = Math.max(EMAIL_V2_MIN_CANVAS_WIDTH, Math.min(
+                EMAIL_V2_MAX_CANVAS_WIDTH,
+                raw.path("customWidth").asInt(presetWidth)));
+        int canvasWidth = "custom".equals(heightMode) ? customWidth : presetWidth;
+        JsonNode rawBackground = raw.path("background");
+        JsonNode rawAreas = raw.path("bodyAreas");
+        if (!rawAreas.isArray() || rawAreas.isEmpty() || rawAreas.size() > 20) {
+            throw new BizException("邮件正文区域数量必须为 1 到 20 个");
+        }
+
+        ObjectNode normalized = objectMapper.createObjectNode();
+        normalized.put("version", 2);
+        normalized.put("canvasPreset", preset);
+        normalized.put("heightMode", heightMode);
+        normalized.put("pageAlign", pageAlign);
+        normalized.put("customWidth", customWidth);
+        normalized.put("customHeight", Math.max(EMAIL_V2_MIN_CANVAS_HEIGHT, Math.min(
+                EMAIL_V2_MAX_CANVAS_HEIGHT,
+                raw.path("customHeight").asInt(presetHeight))));
+        normalized.put("bottomSafeSpace", Math.max(0, Math.min(400, raw.path("bottomSafeSpace").asInt(48))));
+        ObjectNode background = normalized.putObject("background");
+        background.put("positionX", Math.max(0, Math.min(100, rawBackground.path("positionX").asInt(50))));
+        background.put("positionY", Math.max(0, Math.min(100, rawBackground.path("positionY").asInt(50))));
+        background.put("opacity", clamp(rawBackground.path("opacity").asDouble(1.0), 0.1, 1.0));
+
+        ArrayNode areas = normalized.putArray("bodyAreas");
+        Set<String> ids = new HashSet<>();
+        List<int[]> rectangles = new ArrayList<>();
+        int bottommostArea = 0;
+        for (JsonNode rawArea : rawAreas) {
+            String id = rawArea.path("id").asText("").trim();
+            if (!id.matches("[A-Za-z0-9_-]{1,80}") || !ids.add(id)) {
+                throw new BizException("邮件正文区域 ID 不合法或重复");
+            }
+            int x = Math.max(0, Math.min(canvasWidth - 120, rawArea.path("x").asInt(72)));
+            int y = Math.max(0, Math.min(EMAIL_V2_MAX_CANVAS_HEIGHT - 72, rawArea.path("y").asInt(84)));
+            int width = Math.max(120, Math.min(canvasWidth - x, rawArea.path("width").asInt(756)));
+            int height = Math.max(72, Math.min(
+                    EMAIL_V2_MAX_CANVAS_HEIGHT - y,
+                    rawArea.path("height").asInt(240)));
+            for (int[] rectangle : rectangles) {
+                boolean overlaps = y < rectangle[1] + rectangle[3]
+                        && y + height > rectangle[1];
+                if (overlaps) throw new BizException("邮件正文区域不能重叠");
+            }
+            rectangles.add(new int[]{x, y, width, height});
+            bottommostArea = Math.max(bottommostArea, y + height);
+            ObjectNode area = areas.addObject();
+            area.put("id", id);
+            area.put("x", x);
+            area.put("y", y);
+            area.put("width", width);
+            area.put("height", height);
+        }
+        int exactCanvasHeight = "custom".equals(heightMode)
+                ? normalized.path("customHeight").asInt(presetHeight)
+                : presetHeight;
+        if (!"content_fit".equals(heightMode) && bottommostArea > exactCanvasHeight) {
+            throw new BizException("邮件正文区域不能超出当前画布高度");
+        }
+        return normalized;
+    }
+
+    private int calculateEmailEditorV2CanvasWidth(ObjectNode editor) {
+        String preset = normalizeEmailV2Preset(editor.path("canvasPreset").asText("square"));
+        int presetWidth = emailV2PresetWidth(preset);
+        String heightMode = normalizeEmailV2HeightMode(editor.path("heightMode").asText("fixed"));
+        if ("custom".equals(heightMode)) {
+            return Math.max(EMAIL_V2_MIN_CANVAS_WIDTH, Math.min(
+                    EMAIL_V2_MAX_CANVAS_WIDTH,
+                    editor.path("customWidth").asInt(presetWidth)));
+        }
+        return presetWidth;
+    }
+
+    private int calculateEmailEditorV2CanvasHeight(ObjectNode editor) {
+        String preset = normalizeEmailV2Preset(editor.path("canvasPreset").asText("square"));
+        int presetHeight = emailV2PresetHeight(preset);
+        String heightMode = normalizeEmailV2HeightMode(editor.path("heightMode").asText("fixed"));
+        if ("custom".equals(heightMode)) {
+            return Math.max(EMAIL_V2_MIN_CANVAS_HEIGHT, Math.min(
+                    EMAIL_V2_MAX_CANVAS_HEIGHT,
+                    editor.path("customHeight").asInt(presetHeight)));
+        }
+        if ("content_fit".equals(heightMode)) {
+            int bottom = 0;
+            for (JsonNode area : editor.path("bodyAreas")) {
+                bottom = Math.max(bottom, area.path("y").asInt(0) + area.path("height").asInt(0));
+            }
+            int safeSpace = Math.max(0, Math.min(400, editor.path("bottomSafeSpace").asInt(48)));
+            return Math.max(EMAIL_V2_MIN_CANVAS_HEIGHT, Math.min(
+                    EMAIL_V2_MAX_CANVAS_HEIGHT,
+                    Math.max(presetHeight, bottom + safeSpace)));
+        }
+        return presetHeight;
     }
 
     private ObjectNode ensureObjectNode(ObjectNode parent, String fieldName) {

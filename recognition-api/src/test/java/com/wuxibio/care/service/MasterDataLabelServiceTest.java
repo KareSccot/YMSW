@@ -52,7 +52,10 @@ class MasterDataLabelServiceTest {
                 reference("fourthDepartment", "ORG04", "工艺开发部"),
                 reference("fifthDepartment", "ORG05", "纯化技术组"),
                 reference("location", "LOC01", "上海外高桥"),
-                reference("employeeType", "1", "正式员工")));
+                reference("employeeType", "1", "正式员工"),
+                reference("managementJobLevel", "21009", "管理岗位九级"),
+                reference("professionalJobLevel", "13009", "专业岗位九级"),
+                reference("jobGrade", "M2-1", "职位等级 M2-1")));
 
         SysUser user = new SysUser();
         user.setCompanyName("C020");
@@ -65,6 +68,10 @@ class MasterDataLabelServiceTest {
         user.setFifthDepartment("ORG05");
         user.setLocation("LOC01");
         user.setEmployeeType("1");
+        user.setAssignmentClass("ST");
+        user.setManagementJobLevel("21009");
+        user.setProfessionalJobLevel("13009");
+        user.setJobGrade("M2-1");
 
         service().applyUserDisplayLabels(List.of(user));
 
@@ -78,6 +85,20 @@ class MasterDataLabelServiceTest {
         assertEquals("纯化技术组", user.getFifthDepartmentDisplay());
         assertEquals("上海外高桥", user.getLocationDisplay());
         assertEquals("正式员工", user.getEmployeeTypeDisplay());
+        assertEquals("Home", user.getAssignmentClassDisplay());
+        assertEquals("管理岗位九级", user.getManagementJobLevelDisplay());
+        assertEquals("专业岗位九级", user.getProfessionalJobLevelDisplay());
+        assertEquals("职位等级 M2-1", user.getJobGradeDisplay());
+    }
+
+    @Test
+    void mapsGaAssignmentClassToHostWithoutReferenceData() {
+        SysUser user = new SysUser();
+        user.setAssignmentClass("GA");
+
+        service().applyUserDisplayLabels(List.of(user));
+
+        assertEquals("Host", user.getAssignmentClassDisplay());
     }
 
     @Test

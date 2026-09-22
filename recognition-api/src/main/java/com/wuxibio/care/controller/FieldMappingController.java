@@ -7,6 +7,7 @@ import com.wuxibio.care.security.RequiresPermission;
 import com.wuxibio.care.service.FieldMappingService;
 import com.wuxibio.care.service.FunctionPermissionGuard;
 import com.wuxibio.care.service.OdataService;
+import com.wuxibio.care.service.UserMasterFieldCatalog;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -24,10 +25,10 @@ public class FieldMappingController {
         this.odataService = odataService;
     }
 
-    @GetMapping("/token-keys")
+    @GetMapping("/target-fields")
     @RequiresPermission(FunctionPermissionGuard.FIELD_MAPPING_VIEW)
-    public R<List<TokenKeyView>> listTokenKeys() {
-        return R.ok(service.listTokenKeys().stream().map(TokenKeyView::from).toList());
+    public R<List<TargetFieldView>> listTargetFields() {
+        return R.ok(service.listTargetFields().stream().map(TargetFieldView::from).toList());
     }
 
     @GetMapping("/query-config-options")
@@ -97,9 +98,9 @@ public class FieldMappingController {
         fields.add(path);
     }
 
-    public record TokenKeyView(String tokenKey, String label, String fieldType, Integer sortOrder) {
-        public static TokenKeyView from(FieldMapping m) {
-            return new TokenKeyView(m.getTokenKey(), m.getLabel(), m.getFieldType(), m.getSortOrder());
+    public record TargetFieldView(String fieldName, String label, String fieldType, Integer sortOrder) {
+        public static TargetFieldView from(UserMasterFieldCatalog.FieldDefinition field) {
+            return new TargetFieldView(field.fieldName(), field.label(), field.dataType(), field.sortOrder());
         }
     }
 
@@ -107,7 +108,7 @@ public class FieldMappingController {
             Long id,
             Long queryConfigId,
             String sourceField,
-            String tokenKey,
+            String targetField,
             String label,
             String fieldType,
             Integer isBuiltin,
@@ -121,7 +122,7 @@ public class FieldMappingController {
                     mapping.getId(),
                     mapping.getQueryConfigId(),
                     mapping.getSourceField(),
-                    mapping.getTokenKey(),
+                    mapping.getTargetField(),
                     mapping.getLabel(),
                     mapping.getFieldType(),
                     mapping.getIsBuiltin(),

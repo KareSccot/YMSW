@@ -5,6 +5,7 @@ import com.wuxibio.care.dto.SenderMailboxRequest;
 import com.wuxibio.care.dto.SenderMailboxResponse;
 import com.wuxibio.care.security.RequiresPermission;
 import com.wuxibio.care.service.FunctionPermissionGuard;
+import com.wuxibio.care.service.MailboxOwnerResolver;
 import com.wuxibio.care.service.SenderMailboxService;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,9 +17,24 @@ import java.util.Map;
 public class SenderMailboxController {
 
     private final SenderMailboxService service;
+    private final MailboxOwnerResolver ownerResolver;
 
-    public SenderMailboxController(SenderMailboxService service) {
+    public SenderMailboxController(SenderMailboxService service, MailboxOwnerResolver ownerResolver) {
         this.service = service;
+        this.ownerResolver = ownerResolver;
+    }
+
+    @GetMapping("/owner-options")
+    @RequiresPermission({
+            FunctionPermissionGuard.SENDER_MAILBOX_CREATE,
+            FunctionPermissionGuard.SENDER_MAILBOX_EDIT,
+            FunctionPermissionGuard.CONNECTION_CREATE,
+            FunctionPermissionGuard.CONNECTION_EDIT
+    })
+    public R<List<MailboxOwnerResolver.OwnerOption>> ownerOptions(
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "limit", defaultValue = "30") int limit) {
+        return R.ok(ownerResolver.search(keyword, limit));
     }
 
     @GetMapping

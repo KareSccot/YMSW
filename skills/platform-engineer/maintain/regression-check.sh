@@ -12,7 +12,7 @@ echo "检查目录: $MAINTAIN_DIR"
 echo ""
 
 # 1. 路径可达性检查
-echo "【1/6】路径可达性检查..."
+echo "【1/7】路径可达性检查..."
 SKILL_FILE="$PARENT_DIR/SKILL.md"
 if [ -f "$SKILL_FILE" ]; then
     echo "  检查 SKILL.md: $SKILL_FILE"
@@ -32,7 +32,7 @@ fi
 echo ""
 
 # 2. 接口契约一致性检查（只查 CI 模块，KB/VM 模块没有接口契约）
-echo "【2/6】接口契约一致性检查..."
+echo "【2/7】接口契约一致性检查..."
 if [ -d "$MAINTAIN_DIR/capabilities/ci" ]; then
     find "$MAINTAIN_DIR/capabilities/ci" -name "*.md" -type f | while read -r module_file; do
         if ! grep -qE "^## (接口契约|接口)" "$module_file" 2>/dev/null; then
@@ -51,7 +51,7 @@ fi
 echo ""
 
 # 3. 提问协议检查（Batch 连续性只查 gitlab-ci-gen.md，其他模块引用它的 Batch 号是正常的）
-echo "【3/6】提问协议检查..."
+echo "【3/7】提问协议检查..."
 CI_GEN="$MAINTAIN_DIR/capabilities/ci/gitlab-ci-gen.md"
 if [ -f "$CI_GEN" ]; then
     batches=$(grep -o 'Batch [0-9]*' "$CI_GEN" 2>/dev/null | grep -o '[0-9]*' | sort -n -u)
@@ -71,7 +71,7 @@ fi
 echo ""
 
 # 4. 模板检查
-echo "【4/6】模板检查..."
+echo "【4/7】模板检查..."
 if [ -d "$MAINTAIN_DIR/resources/templates" ]; then
     find "$MAINTAIN_DIR/resources/templates" -type f | while read -r template; do
         if grep -qE '\{\{[^}]+\}\}|__[A-Za-z0-9_]+__' "$template" 2>/dev/null; then
@@ -89,7 +89,7 @@ fi
 echo ""
 
 # 5. 编码与格式检查
-echo "【5/6】编码与格式检查..."
+echo "【5/7】编码与格式检查..."
 find "$MAINTAIN_DIR" -type f -name "*.md" | while read -r file; do
     # 检查 BOM
     first_bytes=$(head -n 1 "$file" | od -An -tx1 2>/dev/null | head -c 8)
@@ -107,7 +107,7 @@ echo "  ✓ 编码与格式检查完成"
 echo ""
 
 # 6. 结构一致性检查：capabilities/ 模块 ↔ user-entry/SKILL.md 能力表双向匹配
-echo "【6/6】结构一致性检查..."
+echo "【6/7】结构一致性检查..."
 USER_ENTRY_SKILL="$MAINTAIN_DIR/user-entry/SKILL.md"
 if [ -f "$USER_ENTRY_SKILL" ] && [ -d "$MAINTAIN_DIR/capabilities" ]; then
     # 方向1：抓孤儿——每个 .md 都在能力表有条目（排除 kb/，KB 是平台专属不进用户包）
@@ -143,6 +143,40 @@ if [ -f "$USER_ENTRY_SKILL" ] && [ -d "$MAINTAIN_DIR/capabilities" ]; then
     echo "  ✓ 结构一致性检查完成"
 else
     echo "  ⚠ 未找到 user-entry/SKILL.md 或 capabilities/ 目录"
+fi
+echo ""
+
+# 7. 合规 job 两处交叉一致性检查（cicd-template-jobs.md §A 强制保留表 ↔ SKILL.md CI 合规红线段）
+# 注：不查 user-entry/SKILL.md——用户侧 skill 按设计故意不列 job 名（见 user-entry §安全合规
+# 「不向用户列出具体 job 名单」），对 job 名做交叉比对会对 6 个现有合规 job 全部误报。
+echo "【7/7】合规 job 两处交叉一致性检查..."
+TEMPLATE_JOBS="$MAINTAIN_DIR/resources/references/cicd-template-jobs.md"
+if [ -f "$TEMPLATE_JOBS" ] && [ -f "$SKILL_FILE" ]; then
+    # §A 强制保留表：只抓表格行的第一列 backtick job 名（排除散文里的英文词）
+    mandatory_jobs=$(awk '/^## A\./{f=1;next} /^## B\./{f=0} f' "$TEMPLATE_JOBS" \
+        | grep -E '^\| `[^`]+`' | grep -oE '`[^`]+`' | tr -d '`' | sort -u)
+    # SKILL.md 红线段：job 名用 · 分隔写在同一行，只取含 · 的行按 · 切
+    redline_jobs=$(awk '/^### CI 合规红线/{f=1;next} /^### /{if(f)f=0} f' "$SKILL_FILE" \
+        | grep '·' | tr '·' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | grep -E '^[A-Za-z][A-Za-z0-9_-]+$' | sort -u)
+    # 方向1：§A 有但红线段无 → 漏改红线
+    for job in $mandatory_jobs; do
+        case "$job" in
+            RELEASE_MANAGER) continue ;;  # 变量不是 job
+        esac
+        if ! echo "$redline_jobs" | grep -qw "$job" 2>/dev/null; then
+            echo "  ❌ 合规 job $job 在 cicd-template-jobs.md §A 红线表，但 SKILL.md CI 合规红线段未列"
+        fi
+    done
+    # 方向2：红线段有但 §A 无 → 红线段多了 §A 没登记的
+    for job in $redline_jobs; do
+        if ! echo "$mandatory_jobs" | grep -qw "$job" 2>/dev/null; then
+            echo "  ❌ SKILL.md 红线段列 $job，但 cicd-template-jobs.md §A 强制保留表无此 job"
+        fi
+    done
+    echo "  ✓ 合规 job 两处交叉检查完成"
+else
+    echo "  ⚠ 缺少 cicd-template-jobs.md 或 SKILL.md，跳过"
 fi
 echo ""
 

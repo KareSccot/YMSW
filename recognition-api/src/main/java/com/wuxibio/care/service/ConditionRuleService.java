@@ -52,6 +52,7 @@ public class ConditionRuleService {
     private final MasterDataLookupService masterDataLookupService;
     private final MasterDataReferenceService masterDataReferenceService;
     private final MasterDataLabelService masterDataLabelService;
+    private final EmployeeAssignmentService employeeAssignmentService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -65,6 +66,7 @@ public class ConditionRuleService {
             MasterDataLookupService masterDataLookupService,
             MasterDataReferenceService masterDataReferenceService,
             MasterDataLabelService masterDataLabelService,
+            EmployeeAssignmentService employeeAssignmentService,
             AuditLogService auditLogService) {
         this.ruleMapper = ruleMapper;
         this.versionMapper = versionMapper;
@@ -75,12 +77,22 @@ public class ConditionRuleService {
         this.masterDataLookupService = masterDataLookupService;
         this.masterDataReferenceService = masterDataReferenceService;
         this.masterDataLabelService = masterDataLabelService;
+        this.employeeAssignmentService = employeeAssignmentService;
         this.auditLogService = auditLogService;
     }
 
     public List<FieldOption> fieldOptions(String field, String keyword, int limit) {
         String normalizedField = field == null ? "" : field.trim();
         int safeLimit = Math.max(1, Math.min(limit, 100));
+        if ("AssignmentClass".equals(normalizedField)) {
+            String search = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+            return List.of(new FieldOption("ST", "Home"), new FieldOption("GA", "Host")).stream()
+                    .filter(option -> search.isBlank()
+                            || option.code().toLowerCase(Locale.ROOT).contains(search)
+                            || option.label().toLowerCase(Locale.ROOT).contains(search))
+                    .limit(safeLimit)
+                    .toList();
+        }
         String dimension = switch (normalizedField) {
             case "JobTitle" -> "jobTitle";
             case "Division" -> "division";
@@ -89,6 +101,9 @@ public class ConditionRuleService {
             case "FifthDepartment" -> "fifthDepartment";
             case "Location" -> "location";
             case "EmployeeType" -> "employeeType";
+            case "ManagementJobLevel" -> "managementJobLevel";
+            case "ProfessionalJobLevel" -> "professionalJobLevel";
+            case "JobGrade" -> "jobGrade";
             default -> throw new BizException("该字段不提供人员主数据选项: " + normalizedField);
         };
         List<FieldOption> referenceOptions = masterDataReferenceService
@@ -122,6 +137,15 @@ public class ConditionRuleService {
             case "EmployeeType" -> wrapper.select(SysUser::getEmployeeType)
                     .isNotNull(SysUser::getEmployeeType).ne(SysUser::getEmployeeType, "")
                     .groupBy(SysUser::getEmployeeType).orderByAsc(SysUser::getEmployeeType);
+            case "ManagementJobLevel" -> wrapper.select(SysUser::getManagementJobLevel)
+                    .isNotNull(SysUser::getManagementJobLevel).ne(SysUser::getManagementJobLevel, "")
+                    .groupBy(SysUser::getManagementJobLevel).orderByAsc(SysUser::getManagementJobLevel);
+            case "ProfessionalJobLevel" -> wrapper.select(SysUser::getProfessionalJobLevel)
+                    .isNotNull(SysUser::getProfessionalJobLevel).ne(SysUser::getProfessionalJobLevel, "")
+                    .groupBy(SysUser::getProfessionalJobLevel).orderByAsc(SysUser::getProfessionalJobLevel);
+            case "JobGrade" -> wrapper.select(SysUser::getJobGrade)
+                    .isNotNull(SysUser::getJobGrade).ne(SysUser::getJobGrade, "")
+                    .groupBy(SysUser::getJobGrade).orderByAsc(SysUser::getJobGrade);
             default -> throw new BizException("该字段不提供人员主数据选项: " + normalizedField);
         }
         if (keyword != null && !keyword.isBlank()) {
@@ -134,6 +158,9 @@ public class ConditionRuleService {
                 case "FifthDepartment" -> wrapper.like(SysUser::getFifthDepartment, search);
                 case "Location" -> wrapper.like(SysUser::getLocation, search);
                 case "EmployeeType" -> wrapper.like(SysUser::getEmployeeType, search);
+                case "ManagementJobLevel" -> wrapper.like(SysUser::getManagementJobLevel, search);
+                case "ProfessionalJobLevel" -> wrapper.like(SysUser::getProfessionalJobLevel, search);
+                case "JobGrade" -> wrapper.like(SysUser::getJobGrade, search);
                 default -> { }
             }
         }
@@ -147,6 +174,9 @@ public class ConditionRuleService {
                     case "FifthDepartment" -> user.getFifthDepartment();
                     case "Location" -> user.getLocation();
                     case "EmployeeType" -> user.getEmployeeType();
+                    case "ManagementJobLevel" -> user.getManagementJobLevel();
+                    case "ProfessionalJobLevel" -> user.getProfessionalJobLevel();
+                    case "JobGrade" -> user.getJobGrade();
                     default -> null;
                 })
                 .filter(value -> value != null && !value.isBlank())
@@ -393,13 +423,32 @@ public class ConditionRuleService {
         RuleVersionView version = requirePublishedVersion(versionId);
         LocalDate date = evaluationDate == null ? LocalDate.now() : evaluationDate;
         String executableExpression = expandOrganizationRelations(version.expressionJson());
-        return audienceCandidates(null).stream()
+        return audienceCandidates(version.expressionJson(), null).stream()
                 .filter(user -> {
                     ConditionExpressionService.EvaluationResult result =
                             evaluateEmployee(executableExpression, user, date);
                     return result.errors().isEmpty() && result.matched();
                 })
                 .toList();
+    }
+
+    public List<SysUser> ruleContexts(Long versionId, Collection<String> employeeIds) {
+        RuleVersionView version = requirePublishedVersion(versionId);
+        return audienceCandidates(version.expressionJson(), employeeIds);
+    }
+
+    public AudienceExportData buildAccessibleAudienceExport(Long versionId, LocalDate evaluationDate) {
+        RuleVersionView version = requireAccessiblePublishedVersion(versionId);
+        LocalDate date = evaluationDate == null ? LocalDate.now() : evaluationDate;
+        String executableExpression = expandOrganizationRelations(version.expressionJson());
+        List<SysUser> matched = audienceCandidates(version.expressionJson(), null).stream()
+                .filter(user -> {
+                    ConditionExpressionService.EvaluationResult result = evaluateEmployee(executableExpression, user, date);
+                    return result.errors().isEmpty() && result.matched();
+                })
+                .toList();
+        masterDataLabelService.applyUserDisplayLabels(matched, LocaleContextHolder.getLocale());
+        return new AudienceExportData(version, date, matched);
     }
 
     public EmployeeMatchResult matchEmployeeIds(
@@ -421,7 +470,7 @@ public class ConditionRuleService {
         String executableExpression = expandOrganizationRelations(version.expressionJson());
         LinkedHashSet<String> matchedIds = new LinkedHashSet<>();
         Map<String, List<String>> undetermined = new LinkedHashMap<>();
-        for (SysUser user : audienceCandidates(requestedIds)) {
+        for (SysUser user : audienceCandidates(version.expressionJson(), requestedIds)) {
             String employeeId = safe(user.getEmployeeId()).trim();
             ConditionExpressionService.EvaluationResult result = evaluateEmployee(executableExpression, user, date);
             if (!result.errors().isEmpty()) {
@@ -474,12 +523,7 @@ public class ConditionRuleService {
         String executableExpression = expandOrganizationRelations(expression.expressionJson());
         LocalDate date = evaluationDate == null ? LocalDate.now() : evaluationDate;
         int sampleLimit = Math.max(1, Math.min(limit, 50));
-        List<SysUser> candidates = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getDeleted, 0)
-                .in(SysUser::getStatus, audienceCandidateStatuses())
-                .isNotNull(SysUser::getEmployeeId)
-                .ne(SysUser::getEmployeeId, "")
-                .orderByAsc(SysUser::getEmployeeId));
+        List<SysUser> candidates = audienceCandidates(expression.expressionJson(), null);
         masterDataLabelService.applyUserDisplayLabels(candidates, LocaleContextHolder.getLocale());
 
         List<Map<String, String>> matched = new ArrayList<>();
@@ -563,7 +607,13 @@ public class ConditionRuleService {
         row.put("FifthDepartment", safe(user.getFifthDepartment()));
         row.put("Location", safe(user.getLocation()));
         row.put("EmployeeType", safe(user.getEmployeeType()));
+        row.put("AssignmentClass", safe(user.getAssignmentClass()));
+        row.put("ManagementJobLevel", safe(user.getManagementJobLevel()));
+        row.put("ProfessionalJobLevel", safe(user.getProfessionalJobLevel()));
+        row.put("JobGrade", safe(user.getJobGrade()));
+        row.put("DateOfBirth", dateText(user.getDateOfBirth()));
         row.put("HireDate", dateText(user.getHireDate()));
+        row.put("BenefitsEligibilityStartDate", dateText(user.getBenefitsEligibilityStartDate()));
         row.put("ContractEndDate", dateText(user.getContractEndDate()));
         row.put("ProbationEndDate", dateText(user.getProbationEndDate()));
         row.put("SourceType", safe(user.getSourceType()));
@@ -572,7 +622,10 @@ public class ConditionRuleService {
         return row;
     }
 
-    private List<SysUser> audienceCandidates(Collection<String> employeeIds) {
+    private List<SysUser> audienceCandidates(String expressionJson, Collection<String> employeeIds) {
+        if (employeeAssignmentService != null) {
+            return employeeAssignmentService.selectRuleContexts(expressionJson, employeeIds);
+        }
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getDeleted, 0)
                 .in(SysUser::getStatus, audienceCandidateStatuses())
@@ -582,6 +635,21 @@ public class ConditionRuleService {
             wrapper.in(SysUser::getEmployeeId, employeeIds);
         }
         return sysUserMapper.selectList(wrapper.orderByAsc(SysUser::getEmployeeId));
+    }
+
+    public Map<String, Map<String, String>> employeeTokenValues(
+            Long versionId,
+            Collection<String> employeeIds) {
+        RuleVersionView version = versionId == null ? null : requirePublishedVersion(versionId);
+        String expressionJson = version == null ? null : version.expressionJson();
+        if (employeeAssignmentService != null) {
+            return employeeAssignmentService.tokenValues(employeeIds, expressionJson);
+        }
+        Map<String, Map<String, String>> result = new LinkedHashMap<>();
+        for (SysUser user : audienceCandidates(expressionJson, employeeIds)) {
+            result.put(user.getEmployeeId(), UserMasterFieldCatalog.tokenValues(user));
+        }
+        return result;
     }
 
     private ConditionExpressionService.EvaluationResult evaluateEmployee(
@@ -612,7 +680,15 @@ public class ConditionRuleService {
         sample.put("country", displayOrRaw(user.getCountryDisplay(), user.getCountry()));
         sample.put("location", displayOrRaw(user.getLocationDisplay(), user.getLocation()));
         sample.put("employeeType", displayOrRaw(user.getEmployeeTypeDisplay(), user.getEmployeeType()));
+        sample.put("assignmentClass", displayOrRaw(user.getAssignmentClassDisplay(), user.getAssignmentClass()));
+        sample.put("managementJobLevel", displayOrRaw(
+                user.getManagementJobLevelDisplay(), user.getManagementJobLevel()));
+        sample.put("professionalJobLevel", displayOrRaw(
+                user.getProfessionalJobLevelDisplay(), user.getProfessionalJobLevel()));
+        sample.put("jobGrade", displayOrRaw(user.getJobGradeDisplay(), user.getJobGrade()));
+        sample.put("dateOfBirth", dateText(user.getDateOfBirth()));
         sample.put("hireDate", dateText(user.getHireDate()));
+        sample.put("benefitsEligibilityStartDate", dateText(user.getBenefitsEligibilityStartDate()));
         sample.put("contractEndDate", dateText(user.getContractEndDate()));
         sample.put("probationEndDate", dateText(user.getProbationEndDate()));
         return sample;
@@ -978,6 +1054,12 @@ public class ConditionRuleService {
             Set<String> deniedEmployeeIds,
             Map<String, List<String>> undeterminedReasons,
             RuleVersionView rule) {
+    }
+
+    public record AudienceExportData(
+            RuleVersionView rule,
+            LocalDate evaluationDate,
+            List<SysUser> employees) {
     }
 
     public record FieldOption(String code, String label) {

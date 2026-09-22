@@ -70,6 +70,46 @@ class MasterDataReferenceServiceTest {
     }
 
     @Test
+    void mapsJobClassificationLabelsFromFoJobCode() {
+        for (String dimension : new String[] {"managementJobLevel", "professionalJobLevel"}) {
+            MasterDataReferenceService.RuleReferenceValues values =
+                    MasterDataReferenceService.parseRuleReferenceRow(
+                            dimension,
+                            Map.of(
+                                    "externalCode", "21009",
+                                    "startDate", "/Date(1574208000000)/",
+                                    "endDate", "/Date(253402214400000)/",
+                                    "name_zh_CN", "管理岗位九级",
+                                    "name_en_US", "Management Level 9",
+                                    "status", "A"));
+
+            assertEquals("21009", values.code());
+            assertEquals("管理岗位九级", values.labelZhCn());
+            assertEquals("Management Level 9", values.labelEnUs());
+            assertEquals("A", values.status());
+        }
+    }
+
+    @Test
+    void mapsJobGradeLabelsFromGlobalGradePickList() {
+        MasterDataReferenceService.RuleReferenceValues values = MasterDataReferenceService.parseRuleReferenceRow(
+                "jobGrade",
+                Map.of(
+                        "externalCode", "M2-1",
+                        "PickListV2_effectiveStartDate", "/Date(1574208000000)/",
+                        "label_zh_CN", "管理二级一级",
+                        "label_en_US", "Management 2-1",
+                        "optionId", "grade-option-1",
+                        "status", "A"));
+
+        assertEquals("M2-1", values.code());
+        assertEquals("管理二级一级", values.labelZhCn());
+        assertEquals("Management 2-1", values.labelEnUs());
+        assertEquals("grade-option-1", values.optionId());
+        assertEquals("A", values.status());
+    }
+
+    @Test
     void mapsPositionCodeAndLocalizedNames() {
         MasterDataReferenceService.RuleReferenceValues values = MasterDataReferenceService.parseRuleReferenceRow(
                 "jobTitle",

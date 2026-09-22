@@ -61,6 +61,8 @@ public class TemplateCenterService {
     private static final String ACCESS_SOURCE_ADMIN = "ADMIN";
     public static final String TEMPLATE_KIND_TASK = "TASK";
     public static final String TEMPLATE_KIND_WORKFLOW_NOTIFICATION = "WORKFLOW_NOTIFICATION";
+    public static final String TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION =
+            SenderMailboxBindingNotificationService.TEMPLATE_CODE;
     private static final Set<String> VALID_TEMPLATE_KINDS = Set.of(
             TEMPLATE_KIND_TASK, TEMPLATE_KIND_WORKFLOW_NOTIFICATION);
     private static final Set<String> VALID_CHANNELS = Set.of("Email", "DingTalk");
@@ -293,8 +295,8 @@ public class TemplateCenterService {
         if (templateSenderMailboxService == null) {
             throw new BizException("发件箱解析服务不可用");
         }
-        if (TEMPLATE_KIND_TASK.equals(header.getTemplateKind()) && senderMailboxId == null) {
-            throw new BizException("任务模板组必须选择发送发件箱");
+        if (TEMPLATE_KIND_TASK.equals(header.getTemplateKind())) {
+            throw new BizException("任务模板组请通过发件箱使用申请完成绑定");
         }
         templateSenderMailboxService.requireBindableSenderMailbox(senderMailboxId);
 
@@ -353,6 +355,38 @@ public class TemplateCenterService {
     }
 
     // ==================== Header / Variant write ====================
+
+    @Transactional
+    public TemplateHeaderView createEmptyHeader(String headerName, String templateKind) {
+        if (headerName == null || headerName.isBlank()) throw new BizException("模板组名称不能为空");
+        String normalizedHeader = sanitizeHeaderName(headerName);
+        if (normalizedHeader.isBlank()) throw new BizException("模板组名称不能为空");
+        String normalizedTemplateKind = normalizeTemplateKind(templateKind);
+        ensureHeaderNameUnique(normalizedHeader, null);
+
+        Long ownerId = SecurityUtil.getCurrentUserId();
+        if (ownerId == null) throw new BizException(401, "未登录");
+        String owner = resolveCurrentOwnerUsername(ownerId);
+
+        TemplateHeader header = new TemplateHeader();
+        header.setCode(buildHeaderCode(normalizedHeader));
+        header.setName(normalizedHeader);
+        header.setDescription(null);
+        header.setTemplateKind(normalizedTemplateKind);
+        header.setStatus(TemplateStatus.Draft.name());
+        header.setOwnerUserId(owner);
+        header.setEffectiveStartDate(timeDependentService.normalizeStart(null));
+        header.setEffectiveEndDate(timeDependentService.normalizeEnd(null));
+        templateHeaderMapper.insert(header);
+
+        auditLogService.log(
+                "TEMPLATE_HEADER_CREATE",
+                GovernanceService.RESOURCE_TEMPLATE_HEADER,
+                String.valueOf(header.getId()),
+                "name=" + normalizedHeader + ", templateKind=" + normalizedTemplateKind + ", variants=0");
+        TemplateHeader storedHeader = templateHeaderMapper.selectById(header.getId());
+        return buildHeaderView(storedHeader == null ? header : storedHeader, List.of());
+    }
 
     @Transactional
     public TemplateVariantView createHeader(
@@ -453,10 +487,12 @@ public class TemplateCenterService {
             String channelPayloadJson,
             String tokensJson) {
         TemplateHeader header = getAccessibleHeader(headerId, true);
+        if (isMailboxBindingNotificationTemplate(header)) {
+            throw new BizException("邮箱绑定审批系统模板组只能编辑现有 Email 版本");
+        }
         ensureChannelValid(channel);
         NormalizedVariantPayload payload = normalizeVariantPayload(
                 channel, messageType, subject, content, backgroundImageUrl, designJson, channelPayloadJson);
-        ensureVariantUnique(header.getId(), channel, payload.messageType(), null);
         String normalizedTokensJson = normalizeTokensJson(tokensJson);
         ensureManualFieldsAllowedForAutoBoundHeader(
                 header.getId(),
@@ -512,7 +548,6 @@ public class TemplateCenterService {
                 backgroundImageUrl,
                 designJson,
                 channelPayloadJson);
-        ensureVariantUnique(header.getId(), existing.getChannel(), payload.messageType(), existing.getId());
         String normalizedTokensJson = normalizeTokensJson(tokensJson);
         ensureManualFieldsAllowedForAutoBoundHeader(
                 header.getId(),
@@ -548,6 +583,9 @@ public class TemplateCenterService {
     public void changeVariantStatus(String headerId, Long variantId, String status) {
         ensureStatusValid(status);
         TemplateHeader header = getAccessibleHeader(headerId, true);
+        if (isMailboxBindingNotificationTemplate(header) && !TemplateStatus.Published.name().equals(status)) {
+            throw new BizException("邮箱绑定审批系统模板必须保持 Published");
+        }
         TemplateChannelVariant variant = getVariantInHeader(header, variantId, true);
 
         if (TemplateStatus.Published.name().equals(status)) {
@@ -570,6 +608,9 @@ public class TemplateCenterService {
     @Transactional
     public void deleteVariant(String headerId, Long variantId) {
         TemplateHeader header = getAccessibleHeader(headerId, true);
+        if (isMailboxBindingNotificationTemplate(header)) {
+            throw new BizException("邮箱绑定审批系统模板正在被通知服务使用，不能删除版本");
+        }
         TemplateChannelVariant variant = getVariantInHeader(header, variantId, true);
         if (approvalWorkflowService != null
                 && approvalWorkflowService.isNotificationTemplateVariantReferenced(variant.getId())) {
@@ -587,6 +628,9 @@ public class TemplateCenterService {
     @Transactional
     public void deleteHeader(String headerId) {
         TemplateHeader header = getAccessibleHeader(headerId, true);
+        if (isMailboxBindingNotificationTemplate(header)) {
+            throw new BizException("邮箱绑定审批系统模板正在被通知服务使用，不能删除模板组");
+        }
         Long boundTaskTemplateCount = taskTemplateMapper.selectCount(new LambdaQueryWrapper<TaskTemplate>()
                 .eq(TaskTemplate::getTemplateHeaderId, header.getId()));
         if (boundTaskTemplateCount != null && boundTaskTemplateCount > 0) {
@@ -613,7 +657,7 @@ public class TemplateCenterService {
         TemplateChannelVariant variant = getVariantInHeader(header, variantId, false);
         Map<String, Object> preview = templatePreviewService.previewStored(header, variant);
         recordSuccessfulStoredPreview(header, variant);
-        return preview;
+        return withPublishEvidenceStatus(preview, true);
     }
 
     public Map<String, Object> previewVariantForSend(
@@ -657,10 +701,25 @@ public class TemplateCenterService {
         draft.setTokensJson(tokensJson == null ? stored.getTokensJson() : normalizeTokensJson(tokensJson));
 
         Map<String, Object> preview = templatePreviewService.previewDraft(header, draft);
-        if (matchesStoredVariant(stored, draft)) {
+        boolean publishEvidenceRecorded = matchesStoredVariant(stored, draft);
+        if (publishEvidenceRecorded) {
             recordSuccessfulStoredPreview(header, stored);
         }
-        return preview;
+        return withPublishEvidenceStatus(preview, publishEvidenceRecorded);
+    }
+
+    private Map<String, Object> withPublishEvidenceStatus(
+            Map<String, Object> preview,
+            boolean publishEvidenceRecorded) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (preview != null) {
+            result.putAll(preview);
+        }
+        result.put("publishEvidenceRecorded", publishEvidenceRecorded);
+        if (!publishEvidenceRecorded) {
+            result.put("publishEvidenceReason", "SAVE_REQUIRED");
+        }
+        return result;
     }
 
     // ==================== Test send (delegate) ====================
@@ -724,6 +783,10 @@ public class TemplateCenterService {
 
     public String renderVariantChannelPayloadForSend(TemplateChannelVariant variant, Map<String, String> tokenValues) {
         return templateRenderService.renderVariantChannelPayloadForSend(variant, tokenValues);
+    }
+
+    public String renderVariantDesignJsonForSend(TemplateChannelVariant variant, Map<String, String> tokenValues) {
+        return templatePreviewService.renderDesignJson(variant, tokenValues);
     }
 
     public String resolveVariantMessageType(TemplateChannelVariant variant) {
@@ -836,6 +899,9 @@ public class TemplateCenterService {
                 header.getTemplateKind(),
                 templateTagService == null ? List.of() : templateTagService.listTagCodes(header.getId()),
                 header.getSenderMailboxId(),
+                TEMPLATE_KIND_WORKFLOW_NOTIFICATION.equals(header.getTemplateKind())
+                        && header.getSenderMailboxId() == null,
+                isMailboxBindingNotificationTemplate(header),
                 status,
                 header.getOwnerUserId(),
                 permissionLevel,
@@ -1086,23 +1152,6 @@ public class TemplateCenterService {
         }
     }
 
-    private void ensureVariantUnique(Long headerId, String channel, String messageType, Long excludeVariantId) {
-        if ("Email".equals(channel)) {
-            return;
-        }
-        LambdaQueryWrapper<TemplateChannelVariant> wrapper = new LambdaQueryWrapper<TemplateChannelVariant>()
-                .eq(TemplateChannelVariant::getTemplateHeaderId, headerId)
-                .eq(TemplateChannelVariant::getChannel, channel)
-                .eq(TemplateChannelVariant::getMessageType, messageType);
-        if (excludeVariantId != null) {
-            wrapper.ne(TemplateChannelVariant::getId, excludeVariantId);
-        }
-        Long count = templateChannelVariantMapper.selectCount(wrapper);
-        if (count != null && count > 0) {
-            throw new BizException("该模板组下已存在 " + channel + "/" + messageType + " 版本");
-        }
-    }
-
     private void refreshHeaderStatus(Long headerId) {
         TemplateHeader header = templateHeaderMapper.selectById(headerId);
         if (header == null) return;
@@ -1141,30 +1190,14 @@ public class TemplateCenterService {
                 TEMPLATE_PREVIEW_SUCCESS,
                 TEMPLATE_VARIANT_OBJECT,
                 String.valueOf(variant.getId()));
-        TemplateTestSendLog latestTestSend = testSendLogMapper.selectOne(
-                new LambdaQueryWrapper<TemplateTestSendLog>()
-                        .eq(TemplateTestSendLog::getTemplateId, variant.getId())
-                        .eq(TemplateTestSendLog::getStatus, "Success")
-                        .orderByDesc(TemplateTestSendLog::getCreatedAt)
-                        .last("LIMIT 1"));
-
         LocalDateTime variantUpdatedAt = variant.getUpdatedAt();
         boolean previewPassed = latestPreviewAt != null
                 && (variantUpdatedAt == null || !latestPreviewAt.isBefore(variantUpdatedAt));
-        boolean testSendPassed = latestTestSend != null
-                && latestTestSend.getCreatedAt() != null
-                && (variantUpdatedAt == null || !latestTestSend.getCreatedAt().isBefore(variantUpdatedAt));
 
-        if (previewPassed && testSendPassed) {
+        if (previewPassed) {
             return;
         }
-        if (!previewPassed && !testSendPassed) {
-            throw new BizException("发布前必须完成一次成功的模板预览和一次成功的测试发送");
-        }
-        if (!previewPassed) {
-            throw new BizException("发布前还必须完成一次成功的模板预览");
-        }
-        throw new BizException("发布前还必须完成一次成功的测试发送");
+        throw new BizException("发布前必须完成一次成功的模板预览");
     }
 
     private void recordSuccessfulStoredPreview(TemplateHeader header, TemplateChannelVariant variant) {
@@ -1190,9 +1223,19 @@ public class TemplateCenterService {
                 && Objects.equals(normalizedStored.subject(), previewedDraft.getSubject())
                 && Objects.equals(normalizedStored.content(), previewedDraft.getContent())
                 && Objects.equals(normalizedStored.backgroundImageUrl(), previewedDraft.getBackgroundImageUrl())
-                && Objects.equals(normalizedStored.designJson(), previewedDraft.getDesignJson())
+                && jsonEquivalent(normalizedStored.designJson(), previewedDraft.getDesignJson())
                 && Objects.equals(normalizedStored.channelPayloadJson(), previewedDraft.getChannelPayloadJson())
                 && Objects.equals(normalizeTokensJson(stored.getTokensJson()), previewedDraft.getTokensJson());
+    }
+
+    private boolean jsonEquivalent(String left, String right) {
+        try {
+            JsonNode leftNode = objectMapper.readTree(left == null || left.isBlank() ? "{}" : left);
+            JsonNode rightNode = objectMapper.readTree(right == null || right.isBlank() ? "{}" : right);
+            return Objects.equals(leftNode, rightNode);
+        } catch (Exception ignored) {
+            return Objects.equals(left, right);
+        }
     }
 
     // ==================== Validation / normalization ====================
@@ -1315,11 +1358,7 @@ public class TemplateCenterService {
         try {
             JsonNode root = objectMapper.readTree(trimmed);
             if (root.isArray()) {
-                Set<String> systemTokenKeys = templateTokenService.getSystemTokens().stream()
-                        .map(TemplateTokenService.BuiltinToken::key)
-                        .filter(key -> key != null && !key.isBlank())
-                        .map(String::trim)
-                        .collect(Collectors.toSet());
+                Set<String> systemTokenKeys = templateTokenService.getSystemTokenKeys();
                 var filtered = objectMapper.createArrayNode();
                 for (JsonNode token : root) {
                     String key = token.path("key").asText("").trim();
@@ -1346,6 +1385,9 @@ public class TemplateCenterService {
         ensureChannelValid(channel);
         String normalizedMessageType = normalizeEditableMessageTypeForChannel(channel, messageType);
         String normalizedSubject = subject == null ? "" : subject.trim();
+        if ("Email".equals(channel) && normalizedSubject.isBlank()) {
+            throw new BizException("邮件主题不能为空");
+        }
         if (normalizedSubject.length() > MAX_SUBJECT_LENGTH) {
             throw new BizException("主题长度不能超过 " + MAX_SUBJECT_LENGTH + " 个字符");
         }
@@ -1355,7 +1397,10 @@ public class TemplateCenterService {
         String normalizedDesign = templateRenderService.normalizeDesignJson(designJson);
         String normalizedChannelPayload = null;
 
-        if ("DingTalk".equals(channel) && !"legacy_html_image".equals(normalizedMessageType)) {
+        if ("Email".equals(channel)) {
+            normalizedChannelPayload = templateRenderService.normalizeEmailChannelPayloadV2(channelPayloadJson);
+            templateRenderService.validateEmailEditorV2Contract(normalizedDesign, normalizedChannelPayload);
+        } else if ("DingTalk".equals(channel) && !"legacy_html_image".equals(normalizedMessageType)) {
             normalizedChannelPayload = dingTalkPayloadService.normalizeDingTalkChannelPayload(
                     normalizedMessageType,
                     channelPayloadJson,
@@ -1454,6 +1499,10 @@ public class TemplateCenterService {
         }
     }
 
+    private boolean isMailboxBindingNotificationTemplate(TemplateHeader header) {
+        return header != null && TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION.equals(header.getCode());
+    }
+
     private Map<String, Object> buildPageResult(int page, int size, List<TemplateHeaderView> records, int total) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("records", records);
@@ -1471,6 +1520,8 @@ public class TemplateCenterService {
             String templateKind,
             List<String> tagCodes,
             Long senderMailboxId,
+            boolean usesActiveSmtp,
+            boolean mailboxBindingNotificationTemplate,
             String status,
             String ownerUserId,
             String permissionLevel,

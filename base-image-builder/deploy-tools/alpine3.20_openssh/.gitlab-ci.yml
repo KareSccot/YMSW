@@ -1,0 +1,8 @@
+build-container-alpine3.20_openssh:
+   variables:
+     ALPINE_VERSION: "3.20"
+     DOCKER_BUILD_PATH: deploy-tools/
+     DOCKER_BUILD_ARGS: "--build-arg ALPINE_VERSION=${ALPINE_VERSION}"
+     IMAGE_NAME: alpine${ALPINE_VERSION}_openssh
+   extends:
+     - .build_container_common

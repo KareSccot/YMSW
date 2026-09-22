@@ -1,4 +1,4 @@
-﻿# base-image-builder 镜像目录
+# base-image-builder 镜像目录
 
 ## 目录
 
@@ -36,6 +36,7 @@
 |---|---|---|---|
 | jdk | `jdk8.0.312_mvn3.0.5` | OpenJDK 8 + Maven 3.0.5 | 老 Java 项目编译 |
 | jdk | `jdk11.0.16_mvn3.0.5` | OpenJDK 11 + Maven 3.0.5 | Java 11 项目编译 |
+| jdk | `jdk17.0.11_9_mvn3.9.6` | OpenJDK 17 + Maven 3.9.6 | Java 17 项目编译。已知可用 tag：`feat-java-test-project-images-129984` |
 | jdk | `jdk21_with_gradle_mvn` | OpenJDK 21 + Maven + Gradle | Java 21 项目；cicd-template 默认 |
 | node | `node16.16.0_npm8.11.0` | Node 16.16 + npm 8.11 | 老前端 / Node 服务 |
 | node | `node18_npm9.8.1` | Node 18 + npm 9.8.1 | 中代前端 / Node 服务；cicd-template pnpm.yml 默认 |
@@ -53,6 +54,7 @@
 |---|---|---|---|
 | jre | `jre8u312` | OpenJDK 8 JRE-slim + appuser | Java 8 应用运行时 |
 | jre | `jre11.0.16` | OpenJDK 11 JRE-slim + appuser | Java 11 应用运行时 |
+| jre | `jre17.0.11_9` | OpenJDK 17 JRE-slim + appuser | Java 17 应用运行时。已知可用 tag：`feat-java-test-project-images-130083` |
 
 **FROM 的镜像**（base-image-builder 的 `jre/Dockerfile`）：
 - jre → `openjdk:${JAVA_VERSION}-jre-slim` + 装中文字体 + `useradd appuser` + `USER appuser`
@@ -68,7 +70,7 @@
 
 ## B. 如何在 base-image-builder 新增一个镜像版本
 
-适用场景：A.1 / A.2 现有版本不满足需求（如要 jdk17、jre21、node20、特定 patch 版本）。
+适用场景：A.1 / A.2 现有版本不满足需求（如要 jre21、node20、特定 patch 版本）。
 
 > **关键事实**：base-image-builder 仓库的 CI 是**push 即触发 build**——只要把新版本的 `.gitlab-ci.yml` push 到分支，对应的 `build-container-<新版本>` job 自动跑、镜像自动 push 到 TCR。**MR/PR merge 是 code review 流程，跟 image 可用性脱钩**。所以业务项目接入流程**不必等 merge**，push 完拿到 tag 就能继续。
 

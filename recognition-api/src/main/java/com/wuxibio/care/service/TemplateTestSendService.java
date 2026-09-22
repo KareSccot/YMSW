@@ -3,6 +3,7 @@ package com.wuxibio.care.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wuxibio.care.channel.DingTalkChannel;
 import com.wuxibio.care.channel.MessageChannel;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.SysUser;
@@ -20,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -124,6 +126,22 @@ public class TemplateTestSendService {
         try {
             Map<String, String> metadata = new LinkedHashMap<>();
             metadata.put("headerName", header.getName());
+            if ("DingTalk".equalsIgnoreCase(variant.getChannel())) {
+                String transport = "WORKFLOW_NOTIFICATION".equalsIgnoreCase(header.getTemplateKind())
+                        ? DingTalkChannel.TRANSPORT_WORK_NOTIFICATION
+                        : DingTalkChannel.TRANSPORT_SERVICE_ACCOUNT;
+                metadata.put(DingTalkChannel.METADATA_TRANSPORT, transport);
+                if (DingTalkChannel.TRANSPORT_SERVICE_ACCOUNT.equals(transport)) {
+                    metadata.put(DingTalkLandingPageService.METADATA_RENDERED_DESIGN_JSON,
+                            templatePreviewService.renderDesignJson(variant, tokenValues));
+                    metadata.put(DingTalkLandingPageService.METADATA_TEMPLATE_HEADER_ID,
+                            String.valueOf(variant.getTemplateHeaderId()));
+                    metadata.put(DingTalkLandingPageService.METADATA_CHANNEL_VARIANT_ID,
+                            String.valueOf(variant.getId()));
+                    metadata.put(DingTalkLandingPageService.METADATA_LANDING_SOURCE_KEY,
+                            "TEST:" + UUID.randomUUID());
+                }
+            }
             if (senderResolution != null) {
                 metadata.putAll(senderResolution.metadata());
             }

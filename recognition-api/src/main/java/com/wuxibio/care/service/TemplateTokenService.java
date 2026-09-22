@@ -1,41 +1,30 @@
 package com.wuxibio.care.service;
 
-import com.wuxibio.care.entity.FieldMapping;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
 public class TemplateTokenService {
 
-    private final FieldMappingService fieldMappingService;
-
-    public TemplateTokenService(FieldMappingService fieldMappingService) {
-        this.fieldMappingService = fieldMappingService;
-    }
-
     public List<BuiltinToken> getSystemTokens() {
-        List<BuiltinToken> tokens = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        for (FieldMapping mapping : fieldMappingService.listTokenKeys()) {
-            if (mapping == null) {
-                continue;
-            }
-            String key = safeTrim(mapping.getTokenKey());
-            if (key.isEmpty() || !seen.add(key)) {
-                continue;
-            }
-            String label = safeTrim(mapping.getLabel());
-            tokens.add(new BuiltinToken(key, label.isEmpty() ? key : label, ""));
-        }
-        return tokens;
+        return UserMasterFieldCatalog.templateFields().stream()
+                .map(field -> new BuiltinToken(field.fieldName(), field.label(), ""))
+                .toList();
     }
 
-    private String safeTrim(String value) {
-        return value == null ? "" : value.trim();
+    public Set<String> getSystemTokenKeys() {
+        return UserMasterFieldCatalog.templateTokenKeys();
+    }
+
+    public boolean isSystemToken(String key) {
+        return UserMasterFieldCatalog.isTemplateToken(key);
+    }
+
+    public Map<String, String> getSystemTokenPreviewValues() {
+        return UserMasterFieldCatalog.templatePreviewValues();
     }
 
     public record BuiltinToken(String key, String label, String previewValue) {

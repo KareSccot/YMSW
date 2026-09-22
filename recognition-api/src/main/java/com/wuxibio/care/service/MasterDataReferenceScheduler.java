@@ -42,6 +42,9 @@ public class MasterDataReferenceScheduler {
             syncOne("五级组织", () -> service.syncRuleReferences("fifthDepartment"));
             syncOne("国家列表", service::syncCountries);
             syncOne("员工类型", () -> service.syncRuleReferences("employeeType"));
+            syncOne("管理岗位级别", () -> service.syncRuleReferences("managementJobLevel"));
+            syncOne("专业岗位级别", () -> service.syncRuleReferences("professionalJobLevel"));
+            syncOne("职位等级", () -> service.syncRuleReferences("jobGrade"));
             syncOne("职位", () -> service.syncRuleReferences("jobTitle"));
             syncOne("办公地点", () -> service.syncRuleReferences("location"));
         } finally {

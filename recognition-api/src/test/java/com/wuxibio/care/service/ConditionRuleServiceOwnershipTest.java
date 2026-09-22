@@ -40,6 +40,7 @@ class ConditionRuleServiceOwnershipTest {
     @Mock private MasterDataLookupService masterDataLookupService;
     @Mock private MasterDataReferenceService masterDataReferenceService;
     @Mock private MasterDataLabelService masterDataLabelService;
+    @Mock private EmployeeAssignmentService employeeAssignmentService;
     @Mock private AuditLogService auditLogService;
 
     private ConditionRuleService service;
@@ -56,6 +57,7 @@ class ConditionRuleServiceOwnershipTest {
                 masterDataLookupService,
                 masterDataReferenceService,
                 masterDataLabelService,
+                employeeAssignmentService,
                 auditLogService);
     }
 

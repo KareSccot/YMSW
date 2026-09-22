@@ -3,6 +3,7 @@ package com.wuxibio.care.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.channel.EmailChannel;
+import com.wuxibio.care.channel.DingTalkChannel;
 import com.wuxibio.care.channel.MessageChannel;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.dto.MdLookupItem;
@@ -53,25 +54,22 @@ public class SendService {
     private static final Set<String> RUNTIME_SYSTEM_TOKENS = Set.of(
             "EmployeeId", "Date"
     );
-    private static final String[][] SYSTEM_FIELD_ALIAS_GROUPS = {
-            {"EmployeeId", "employeeId"},
-            {"Name", "name"},
-            {"Email", "email"},
-            {"Phone", "phone"},
-            {"Department", "department"},
-            {"Country", "country"},
-            {"CompanyName", "companyName"},
-            {"JobTitle", "jobTitle"},
-            {"Division", "division"},
-            {"ThirdDepartment", "thirdDepartment"},
-            {"FourthDepartment", "fourthDepartment"},
-            {"FifthDepartment", "fifthDepartment"},
-            {"Location", "location"},
-            {"SourceType", "sourceType"},
-            {"DingTalkUserId", "dingtalkUserId"},
-            {"Status", "status"}
-    };
+    private static final List<List<String>> SYSTEM_FIELD_ALIAS_GROUPS = UserMasterFieldCatalog.aliasGroups();
     private static final Map<String, String> SYSTEM_FIELD_CANONICAL_BY_ALIAS = buildSystemFieldCanonicalByAlias();
+    private static final Map<String, String> REFERENCE_DIMENSION_BY_SYSTEM_FIELD = Map.ofEntries(
+            Map.entry("Department", MasterDataLookupService.DIMENSION_DEPARTMENT),
+            Map.entry("Country", MasterDataLookupService.DIMENSION_COUNTRY),
+            Map.entry("CompanyName", MasterDataLookupService.DIMENSION_COMPANY),
+            Map.entry("JobTitle", MasterDataLookupService.DIMENSION_JOB_TITLE),
+            Map.entry("Division", MasterDataLookupService.DIMENSION_DIVISION),
+            Map.entry("ThirdDepartment", MasterDataLookupService.DIMENSION_THIRD_DEPARTMENT),
+            Map.entry("FourthDepartment", MasterDataLookupService.DIMENSION_FOURTH_DEPARTMENT),
+            Map.entry("FifthDepartment", MasterDataLookupService.DIMENSION_FIFTH_DEPARTMENT),
+            Map.entry("Location", MasterDataLookupService.DIMENSION_LOCATION),
+            Map.entry("EmployeeType", MasterDataLookupService.DIMENSION_EMPLOYEE_TYPE),
+            Map.entry("ManagementJobLevel", MasterDataLookupService.DIMENSION_MANAGEMENT_JOB_LEVEL),
+            Map.entry("ProfessionalJobLevel", MasterDataLookupService.DIMENSION_PROFESSIONAL_JOB_LEVEL),
+            Map.entry("JobGrade", MasterDataLookupService.DIMENSION_JOB_GRADE));
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final OdataService odataService;
@@ -143,6 +141,7 @@ public class SendService {
             String subject,
             String content,
             String channelPayloadJson,
+            String renderedDesignJson,
             String messageType,
             String renderSnapshotJson,
             List<String> blockedFields) {
@@ -350,9 +349,9 @@ public class SendService {
                     String[] refValues = new String[] {
                             safe(user.getName()),
                             safe(user.getEmail()),
-                            translateOrFallback(user.getDepartment(), deptLookup),
-                            translateOrFallback(user.getCountry(), countryLookup),
-                            translateOrFallback(user.getCompanyName(), companyLookup),
+                            translateOrFallback(user.getDepartment(), deptLookup, isEnglish(taskTemplate)),
+                            translateOrFallback(user.getCountry(), countryLookup, isEnglish(taskTemplate)),
+                            translateOrFallback(user.getCompanyName(), companyLookup, isEnglish(taskTemplate)),
                     };
                     for (int i = 0; i < refCols.length; i++) {
                         Cell refCell = dataRow.createCell(refCols[i]);
@@ -388,12 +387,18 @@ public class SendService {
 
     private static String safe(String s) { return s == null ? "" : s; }
 
-    private static String translateOrFallback(String code, Map<String, MdLookupItem> lookup) {
+    private static String translateOrFallback(
+            String code,
+            Map<String, MdLookupItem> lookup,
+            boolean english) {
         if (code == null || code.isBlank()) return "";
         MdLookupItem item = lookupItem(code, lookup);
         if (item == null) return code;
-        return item.getLabelZh() != null ? item.getLabelZh()
-                : (item.getLabelEn() != null ? item.getLabelEn() : code);
+        String preferred = english ? item.getLabelEn() : item.getLabelZh();
+        String fallback = english ? item.getLabelZh() : item.getLabelEn();
+        return preferred != null && !preferred.isBlank()
+                ? preferred
+                : (fallback != null && !fallback.isBlank() ? fallback : code);
     }
 
     private static MdLookupItem lookupItem(String code, Map<String, MdLookupItem> lookup) {
@@ -501,14 +506,15 @@ public class SendService {
             Map<String, Map<String, String>> sfData = Map.of();
             boolean odataFetchFailed = false;
             try {
-                sfData = odataService.fetchEmployeesByIds(employeeIds);
+                sfData = fetchEmployeesByIdsForTask(employeeIds, taskTemplate);
                 log.info("[SEND-TASK] Fetched {} employees from SF OData", sfData.size());
             } catch (Exception e) {
                 log.error("[SEND-TASK] OData fetch failed: {}", e.getMessage(), e);
                 odataFetchFailed = true;
             }
 
-            ReferenceLookups referenceLookups = loadReferenceLookups(combineLookupSources(rawRows, sfData.values()));
+            ReferenceLookups referenceLookups = loadReferenceLookups(
+                    combineLookupSources(rawRows, sfData.values()), taskTemplate);
 
             RecipientScopeService.ScopeValidationResult scopeValidation =
                     recipientScopeService.validateByEmployeeIds(employeeIds, taskTemplateId);
@@ -592,6 +598,7 @@ public class SendService {
             result.put("rows", validRows);
             result.put("errors", errors);
             result.put("mode", taskTemplate.getMode());
+            result.put("sendLanguage", normalizeSendLanguage(taskTemplate));
             result.put("scopeSnapshot", scopeValidation.scopeSnapshotJson());
 
             List<String> warnings = new ArrayList<>();
@@ -623,8 +630,9 @@ public class SendService {
             throw new BizException("员工 " + employeeId + " 不在当前账号授权范围内，禁止预览");
         }
 
-        Map<String, String> sfData = odataService.fetchEmployeesByIds(List.of(employeeId)).getOrDefault(employeeId, Map.of());
-        ReferenceLookups referenceLookups = loadReferenceLookups(List.of(rowData, sfData));
+        Map<String, String> sfData = fetchEmployeesByIdsForTask(List.of(employeeId), taskTemplate)
+                .getOrDefault(employeeId, Map.of());
+        ReferenceLookups referenceLookups = loadReferenceLookups(List.of(rowData, sfData), taskTemplate);
         Map<String, String> resolvedRow = applySourceBindingDefinitions(taskTemplateId, templateId, rowData, sfData);
         resolvedRow = applySystemFieldFallbacks(resolvedRow, sfData);
         resolvedRow = applyDingTalkUserIdFromSystem(resolvedRow);
@@ -682,7 +690,7 @@ public class SendService {
                     .toList();
             Map<String, Map<String, String>> fetchedEmployeeData = missingEmailEmployeeIds.isEmpty()
                     ? Map.of()
-                    : odataService.fetchEmployeesByIds(missingEmailEmployeeIds);
+                    : fetchEmployeesByIdsForTask(missingEmailEmployeeIds, taskTemplate);
             Map<String, Map<String, String>> employeeDataById =
                     fetchedEmployeeData == null ? Map.of() : fetchedEmployeeData;
             for (int i = 0; i < rows.size(); i++) {
@@ -933,6 +941,17 @@ public class SendService {
             try {
                 Map<String, String> metadata = new LinkedHashMap<>();
                 metadata.put("taskTemplateId", String.valueOf(taskTemplate.getId()));
+                if ("DingTalk".equalsIgnoreCase(tpl.getChannel())) {
+                    metadata.put(DingTalkChannel.METADATA_TRANSPORT, DingTalkChannel.TRANSPORT_SERVICE_ACCOUNT);
+                    metadata.put(DingTalkLandingPageService.METADATA_RENDERED_DESIGN_JSON,
+                            prepared.renderedDesignJson() == null ? "" : prepared.renderedDesignJson());
+                    metadata.put(DingTalkLandingPageService.METADATA_TEMPLATE_HEADER_ID,
+                            String.valueOf(tpl.getTemplateHeaderId()));
+                    metadata.put(DingTalkLandingPageService.METADATA_CHANNEL_VARIANT_ID,
+                            String.valueOf(tpl.getId()));
+                    metadata.put(DingTalkLandingPageService.METADATA_LANDING_SOURCE_KEY,
+                            "RUN:" + taskRun.getId() + ":" + recipientItem.getRecipientId() + ":" + tpl.getId());
+                }
                 if (mailboxSelection != null) {
                     metadata.putAll(mailboxSelection.metadata());
                 }
@@ -983,8 +1002,10 @@ public class SendService {
             TemplateChannelVariant template,
             List<Map<String, String>> rows) {
         Map<String, MissingRule> missingRules = buildMissingRules(taskTemplate.getId(), template.getId());
-        Map<String, Map<String, String>> sfDataByEmployeeId = odataService.fetchEmployeesByIds(collectEmployeeIds(rows));
-        ReferenceLookups referenceLookups = loadReferenceLookups(combineLookupSources(rows, sfDataByEmployeeId.values()));
+        Map<String, Map<String, String>> sfDataByEmployeeId = fetchEmployeesByIdsForTask(
+                collectEmployeeIds(rows), taskTemplate);
+        ReferenceLookups referenceLookups = loadReferenceLookups(
+                combineLookupSources(rows, sfDataByEmployeeId.values()), taskTemplate);
         List<PreparedRecipient> prepared = new ArrayList<>();
         for (Map<String, String> row : rows) {
             String employeeId = safeTrim(row.getOrDefault("EmployeeId", ""));
@@ -1003,6 +1024,7 @@ public class SendService {
             String subject = replaceTokens(template.getSubject(), tokenValues);
             String content = templateCenterService.renderVariantContentForSend(template, tokenValues);
             String channelPayload = templateCenterService.renderVariantChannelPayloadForSend(template, tokenValues);
+            String renderedDesignJson = templateCenterService.renderVariantDesignJsonForSend(template, tokenValues);
             String messageType = templateCenterService.resolveVariantMessageType(template);
             String recipient = resolveRecipientByChannel(template.getChannel(), processedRow);
             Map<String, String> snapshot = buildRenderSnapshot(
@@ -1017,6 +1039,7 @@ public class SendService {
                     subject,
                     content,
                     channelPayload,
+                    renderedDesignJson,
                     messageType,
                     toJsonString(snapshot),
                     List.copyOf(policyResult.blockedFields())));
@@ -1045,6 +1068,20 @@ public class SendService {
         applySystemTokenAliases(tokenValues);
         tokenValues.putIfAbsent("Date", LocalDate.now().toString());
         return tokenValues;
+    }
+
+    private String assignmentExpression(TaskTemplate taskTemplate) {
+        if (taskTemplate == null || taskTemplate.getConditionRuleVersionId() == null) return null;
+        return conditionRuleService.requirePublishedVersion(taskTemplate.getConditionRuleVersionId()).expressionJson();
+    }
+
+    private Map<String, Map<String, String>> fetchEmployeesByIdsForTask(
+            List<String> employeeIds,
+            TaskTemplate taskTemplate) {
+        String expression = assignmentExpression(taskTemplate);
+        return expression == null
+                ? odataService.fetchEmployeesByIds(employeeIds)
+                : odataService.fetchEmployeesByIds(employeeIds, expression);
     }
 
     private TemplateChannelVariant ensureTemplateBelongsToTaskTemplate(TaskTemplate taskTemplate, Long templateId) {
@@ -1076,11 +1113,11 @@ public class SendService {
 
     private Map<String, String> applySystemFieldFallbacks(Map<String, String> row, Map<String, String> sourceData) {
         Map<String, String> resolved = compactSystemFieldAliases(row);
-        for (String[] aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
-            if (aliases.length == 0) {
+        for (List<String> aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
+            if (aliases.isEmpty()) {
                 continue;
             }
-            String canonicalKey = aliases[0];
+            String canonicalKey = aliases.get(0);
             String currentValue = lookupValue(resolved, canonicalKey);
             String sourceValue = lookupValue(sourceData, canonicalKey);
             String value = !currentValue.isBlank() ? currentValue : sourceValue;
@@ -1092,11 +1129,14 @@ public class SendService {
     }
 
     private record ReferenceLookups(
-            Map<String, MdLookupItem> departments,
-            Map<String, MdLookupItem> countries,
-            Map<String, MdLookupItem> companies) {
+            Map<String, Map<String, MdLookupItem>> byField,
+            boolean english) {
         private static ReferenceLookups empty() {
-            return new ReferenceLookups(Map.of(), Map.of(), Map.of());
+            return new ReferenceLookups(Map.of(), false);
+        }
+
+        private Map<String, MdLookupItem> forField(String field) {
+            return byField == null ? Map.of() : byField.getOrDefault(field, Map.of());
         }
     }
 
@@ -1113,14 +1153,21 @@ public class SendService {
         return combined;
     }
 
-    private ReferenceLookups loadReferenceLookups(Collection<Map<String, String>> rows) {
+    private ReferenceLookups loadReferenceLookups(
+            Collection<Map<String, String>> rows,
+            TaskTemplate taskTemplate) {
         if (rows == null || rows.isEmpty()) {
-            return ReferenceLookups.empty();
+            return new ReferenceLookups(Map.of(), isEnglish(taskTemplate));
         }
-        return new ReferenceLookups(
-                lookupReferenceDimension(MasterDataLookupService.DIMENSION_DEPARTMENT, collectReferenceValues(rows, "Department")),
-                lookupReferenceDimension(MasterDataLookupService.DIMENSION_COUNTRY, collectReferenceValues(rows, "Country")),
-                lookupReferenceDimension(MasterDataLookupService.DIMENSION_COMPANY, collectReferenceValues(rows, "CompanyName")));
+        Map<String, Map<String, MdLookupItem>> byField = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : REFERENCE_DIMENSION_BY_SYSTEM_FIELD.entrySet()) {
+            Set<String> codes = collectReferenceValues(rows, entry.getKey());
+            if ("JobTitle".equals(entry.getKey())) {
+                codes.addAll(collectReferenceValues(rows, "PositionCode"));
+            }
+            byField.put(entry.getKey(), lookupReferenceDimension(entry.getValue(), codes));
+        }
+        return new ReferenceLookups(Map.copyOf(byField), isEnglish(taskTemplate));
     }
 
     private Set<String> collectReferenceValues(Collection<Map<String, String>> rows, String key) {
@@ -1152,27 +1199,61 @@ public class SendService {
             return row;
         }
         Map<String, String> resolved = compactSystemFieldAliases(row);
-        translateSystemReferenceField(resolved, "Department", lookups == null ? Map.of() : lookups.departments());
-        translateSystemReferenceField(resolved, "Country", lookups == null ? Map.of() : lookups.countries());
-        translateSystemReferenceField(resolved, "CompanyName", lookups == null ? Map.of() : lookups.companies());
+        ReferenceLookups effectiveLookups = lookups == null ? ReferenceLookups.empty() : lookups;
+        for (String field : REFERENCE_DIMENSION_BY_SYSTEM_FIELD.keySet()) {
+            if ("JobTitle".equals(field)) {
+                translateJobTitle(resolved, effectiveLookups);
+            } else {
+                translateSystemReferenceField(
+                        resolved, field, effectiveLookups.forField(field), effectiveLookups.english());
+            }
+        }
         return resolved;
     }
 
-    private void translateSystemReferenceField(Map<String, String> row, String key, Map<String, MdLookupItem> lookup) {
+    private void translateJobTitle(Map<String, String> row, ReferenceLookups lookups) {
+        String rawJobTitle = lookupValue(row, "JobTitle");
+        String positionCode = lookupValue(row, "PositionCode");
+        String lookupCode = positionCode.isBlank() ? rawJobTitle : positionCode;
+        if (lookupCode.isBlank()) {
+            return;
+        }
+        Map<String, MdLookupItem> lookup = lookups.forField("JobTitle");
+        if (lookupItem(lookupCode, lookup) != null) {
+            row.put("JobTitle", translateOrFallback(lookupCode, lookup, lookups.english()));
+        } else if (rawJobTitle.isBlank()) {
+            row.put("JobTitle", lookupCode);
+        }
+    }
+
+    private void translateSystemReferenceField(
+            Map<String, String> row,
+            String key,
+            Map<String, MdLookupItem> lookup,
+            boolean english) {
         String value = lookupValue(row, key);
         if (value.isBlank()) {
             return;
         }
-        row.put(key, translateOrFallback(value, lookup == null ? Map.of() : lookup));
+        row.put(key, translateOrFallback(value, lookup == null ? Map.of() : lookup, english));
+    }
+
+    private static boolean isEnglish(TaskTemplate taskTemplate) {
+        return "EN".equals(normalizeSendLanguage(taskTemplate));
+    }
+
+    private static String normalizeSendLanguage(TaskTemplate taskTemplate) {
+        String language = taskTemplate == null ? null : taskTemplate.getSendLanguage();
+        return "EN".equalsIgnoreCase(language) ? "EN" : "ZH";
     }
 
     private static Map<String, String> buildSystemFieldCanonicalByAlias() {
         Map<String, String> result = new LinkedHashMap<>();
-        for (String[] aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
-            if (aliases.length == 0 || aliases[0] == null || aliases[0].isBlank()) {
+        for (List<String> aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
+            if (aliases.isEmpty() || aliases.get(0) == null || aliases.get(0).isBlank()) {
                 continue;
             }
-            String canonical = aliases[0].trim();
+            String canonical = aliases.get(0).trim();
             for (String alias : aliases) {
                 if (alias != null && !alias.isBlank()) {
                     result.put(alias.trim().toLowerCase(Locale.ROOT), canonical);
@@ -1214,7 +1295,7 @@ public class SendService {
     }
 
     private void applySystemTokenAliases(Map<String, String> tokenValues) {
-        for (String[] aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
+        for (List<String> aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
             String value = "";
             for (String alias : aliases) {
                 value = lookupValue(tokenValues, alias);
@@ -1379,6 +1460,7 @@ public class SendService {
             String type = safeTrim(root.get("type") == null ? "" : String.valueOf(root.get("type"))).toUpperCase(Locale.ROOT);
             return switch (type) {
                 case "ROW" -> lookupValue(rowData, safeTrim(root.get("path") == null ? fieldCode : String.valueOf(root.get("path"))));
+                case "USER" -> lookupValue(sfData, safeTrim(root.get("field") == null ? fieldCode : String.valueOf(root.get("field"))));
                 case "SF" -> lookupValue(sfData, safeTrim(root.get("path") == null ? fieldCode : String.valueOf(root.get("path"))));
                 case "CONSTANT" -> safeTrim(root.get("value") == null ? "" : String.valueOf(root.get("value")));
                 case "EXPRESSION" -> {
@@ -1718,7 +1800,7 @@ public class SendService {
         }
         Set<String> coveredKeys = new java.util.HashSet<>();
         RUNTIME_SYSTEM_TOKENS.forEach(token -> coveredKeys.add(tokenIdentity(token)));
-        for (String[] aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
+        for (List<String> aliases : SYSTEM_FIELD_ALIAS_GROUPS) {
             for (String alias : aliases) {
                 coveredKeys.add(tokenIdentity(alias));
             }

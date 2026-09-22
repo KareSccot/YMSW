@@ -28,6 +28,16 @@ class TemplateImageStorageServiceTest {
     }
 
     @Test
+    void storeImageBytesPersistsImportedAssetUnderTargetScope() throws Exception {
+        TemplateImageStorageService storage = new TemplateImageStorageService(tempDir.toString());
+
+        String relativePath = storage.storeImage(new byte[]{1, 2, 3}, "Imported-42", "png");
+
+        assertThat(relativePath).startsWith("imported-42/");
+        assertThat(Files.readAllBytes(storage.resolveImage(relativePath))).containsExactly(1, 2, 3);
+    }
+
+    @Test
     void listImagesReturnsScopedAndLegacyFlatFilesForCompatibility() throws Exception {
         TemplateImageStorageService storage = new TemplateImageStorageService(tempDir.toString());
         Files.createDirectories(tempDir.resolve("birthday"));

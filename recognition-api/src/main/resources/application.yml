@@ -1,8 +1,14 @@
 spring:
   profiles:
     default: local
+  servlet:
+    multipart:
+      max-file-size: 64MB
+      max-request-size: 66MB
 
 app:
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  mailbox-binding-approval-path: ${MAILBOX_BINDING_APPROVAL_PATH:/approvals}
   master-data-reference-sync:
     enabled: ${MASTER_DATA_REFERENCE_SYNC_ENABLED:true}
     cron: "${MASTER_DATA_REFERENCE_SYNC_CRON:0 0 2 * * *}"

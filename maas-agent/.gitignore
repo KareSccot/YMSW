@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 本地凭证 / 配置(不进仓库)
+config.local.json
+.env
+*.local
+
+# 脚本导出产物(本地对账用,不入库)
+*.csv
+
+# K8s manifests(含真实凭证的 secret,部署用,不纳入本仓库)
+manifests/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

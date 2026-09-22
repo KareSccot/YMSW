@@ -2,6 +2,7 @@ package com.wuxibio.care.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.FieldRegistry;
 import com.wuxibio.care.entity.SysUser;
@@ -42,6 +43,7 @@ public class TaskTemplateService {
 
     private static final Pattern TOKEN_PATTERN = Pattern.compile("\\{\\{(\\w+)}}");
     private static final Set<String> VALID_MODE = Set.of("Manual", "Auto");
+    private static final Set<String> VALID_SEND_LANGUAGE = Set.of("ZH", "EN");
     private static final Set<String> VALID_STATUS = Set.of("Draft", "Active", "Inactive", "Archived");
     private static final Set<String> VALID_SHARE_PERMISSION = Set.of(
             GovernanceService.PERMISSION_USE,
@@ -63,7 +65,6 @@ public class TaskTemplateService {
     private final ConditionRuleService conditionRuleService;
     private final GovernanceService governanceService;
     private final AuditLogService auditLogService;
-    private final OdataService odataService;
     private final TimeDependentService timeDependentService;
     private final TemplateManualFieldService templateManualFieldService;
 
@@ -78,7 +79,6 @@ public class TaskTemplateService {
             ConditionRuleService conditionRuleService,
             GovernanceService governanceService,
             AuditLogService auditLogService,
-            OdataService odataService,
             TimeDependentService timeDependentService,
             TemplateManualFieldService templateManualFieldService) {
         this.mapper = mapper;
@@ -91,7 +91,6 @@ public class TaskTemplateService {
         this.conditionRuleService = conditionRuleService;
         this.governanceService = governanceService;
         this.auditLogService = auditLogService;
-        this.odataService = odataService;
         this.timeDependentService = timeDependentService;
         this.templateManualFieldService = templateManualFieldService;
     }
@@ -135,6 +134,7 @@ public class TaskTemplateService {
                 row.getCode(),
                 row.getName(),
                 row.getMode(),
+                normalizeSendLanguage(row.getSendLanguage()),
                 row.getTemplateHeaderId(),
                 String.valueOf(row.getTemplateHeaderId()),
                 headerName,
@@ -174,6 +174,109 @@ public class TaskTemplateService {
                 row.getConditionRuleVersionId(), evaluationDate, limit);
     }
 
+    public ConditionRuleBindingImpact conditionRuleBindingImpact(Long ruleId, Long targetVersionId) {
+        ConditionRuleService.RuleDetail ruleDetail = conditionRuleService.detail(ruleId);
+        ConditionRuleService.RuleVersionView targetVersion = ruleDetail.versions().stream()
+                .filter(version -> version.id().equals(targetVersionId))
+                .findFirst()
+                .orElseThrow(() -> new BizException("目标规则版本不存在"));
+        if (!ConditionRuleService.VERSION_PUBLISHED.equals(targetVersion.status())) {
+            throw new BizException("只能将 Task Template 更新到已发布的规则版本");
+        }
+
+        Map<Long, Integer> versionNumbers = ruleDetail.versions().stream()
+                .collect(Collectors.toMap(
+                        ConditionRuleService.RuleVersionView::id,
+                        ConditionRuleService.RuleVersionView::versionNo,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        List<Long> outdatedVersionIds = versionNumbers.keySet().stream()
+                .filter(id -> !id.equals(targetVersionId))
+                .toList();
+        if (outdatedVersionIds.isEmpty()) {
+            return new ConditionRuleBindingImpact(
+                    ruleId,
+                    targetVersion.ruleName(),
+                    targetVersionId,
+                    targetVersion.versionNo(),
+                    0,
+                    0,
+                    List.of());
+        }
+
+        List<ConditionRuleTaskTemplateBinding> bindings = mapper.selectList(
+                        new LambdaQueryWrapper<TaskTemplate>()
+                                .in(TaskTemplate::getConditionRuleVersionId, outdatedVersionIds)
+                                .orderByAsc(TaskTemplate::getName)
+                                .orderByAsc(TaskTemplate::getId))
+                .stream()
+                .map(template -> {
+                    TaskTemplateAccess access = resolveAccess(template);
+                    if (access.permissionLevel() == null) return null;
+                    return new ConditionRuleTaskTemplateBinding(
+                            template.getId(),
+                            template.getName(),
+                            template.getMode(),
+                            template.getStatus(),
+                            template.getConditionRuleVersionId(),
+                            versionNumbers.get(template.getConditionRuleVersionId()),
+                            access.canEdit(),
+                            access.accessSource());
+                })
+                .filter(binding -> binding != null)
+                .toList();
+        int updateableCount = (int) bindings.stream()
+                .filter(ConditionRuleTaskTemplateBinding::canUpdate)
+                .count();
+        return new ConditionRuleBindingImpact(
+                ruleId,
+                targetVersion.ruleName(),
+                targetVersionId,
+                targetVersion.versionNo(),
+                bindings.size(),
+                updateableCount,
+                bindings);
+    }
+
+    @Transactional
+    public ConditionRuleBindingUpdateResult updateConditionRuleBindings(Long ruleId, Long targetVersionId) {
+        ConditionRuleBindingImpact impact = conditionRuleBindingImpact(ruleId, targetVersionId);
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int uneditableCount = 0;
+        for (ConditionRuleTaskTemplateBinding binding : impact.taskTemplates()) {
+            if (!binding.canUpdate()) {
+                uneditableCount++;
+                continue;
+            }
+            int changed = mapper.update(
+                    null,
+                    new UpdateWrapper<TaskTemplate>()
+                            .eq("task_template_id", binding.id())
+                            .eq("condition_rule_version_id", binding.currentVersionId())
+                            .set("condition_rule_version_id", targetVersionId));
+            if (changed == 0) {
+                skippedCount++;
+                continue;
+            }
+            updatedCount++;
+            auditLogService.log(
+                    "TASK_TEMPLATE_CONDITION_RULE_VERSION_UPDATE",
+                    "TASK_TEMPLATE",
+                    String.valueOf(binding.id()),
+                    "conditionRuleId=" + ruleId
+                            + ", fromVersionId=" + binding.currentVersionId()
+                            + ", toVersionId=" + targetVersionId);
+        }
+        return new ConditionRuleBindingUpdateResult(
+                ruleId,
+                targetVersionId,
+                impact.targetVersionNo(),
+                updatedCount,
+                skippedCount,
+                uneditableCount);
+    }
+
     @Transactional
     public TaskTemplateDetail create(
             String name,
@@ -183,6 +286,20 @@ public class TaskTemplateService {
             Long conditionRuleVersionId,
             Long autoChannelVariantId,
             List<BindingPayload> bindings) {
+        return create(name, mode, templateHeaderId, description, conditionRuleVersionId,
+                autoChannelVariantId, bindings, null);
+    }
+
+    @Transactional
+    public TaskTemplateDetail create(
+            String name,
+            String mode,
+            Object templateHeaderId,
+            String description,
+            Long conditionRuleVersionId,
+            Long autoChannelVariantId,
+            List<BindingPayload> bindings,
+            String sendLanguage) {
         String ownerUsername = resolveCurrentOwnerUsername();
         if (ownerUsername == null) {
             throw new BizException(401, "未登录");
@@ -199,6 +316,7 @@ public class TaskTemplateService {
         row.setCode(buildCode(name));
         row.setName(normalizeName(name));
         row.setMode(normalizedMode);
+        row.setSendLanguage(normalizeSendLanguage(sendLanguage));
         row.setTemplateHeaderId(templateHeaderRef);
         row.setDescription(safeTrim(description));
         row.setStatus("Draft");
@@ -229,6 +347,25 @@ public class TaskTemplateService {
             Long autoChannelVariantId,
             boolean autoChannelVariantProvided,
             List<BindingPayload> bindings) {
+        return update(id, name, mode, templateHeaderId, description, conditionRuleVersionId,
+                conditionRuleProvided, autoChannelVariantId, autoChannelVariantProvided,
+                bindings, null, false);
+    }
+
+    @Transactional
+    public TaskTemplateDetail update(
+            Long id,
+            String name,
+            String mode,
+            Object templateHeaderId,
+            String description,
+            Long conditionRuleVersionId,
+            boolean conditionRuleProvided,
+            Long autoChannelVariantId,
+            boolean autoChannelVariantProvided,
+            List<BindingPayload> bindings,
+            String sendLanguage,
+            boolean sendLanguageProvided) {
         TaskTemplate existing = getAccessibleById(id, true);
 
         Long templateHeaderRef = templateHeaderId == null
@@ -237,6 +374,9 @@ public class TaskTemplateService {
         String normalizedMode = mode == null ? existing.getMode() : normalizeMode(mode);
         String normalizedName = name == null ? existing.getName() : normalizeName(name);
         String normalizedDescription = description == null ? existing.getDescription() : safeTrim(description);
+        String normalizedSendLanguage = sendLanguageProvided
+                ? normalizeSendLanguage(sendLanguage)
+                : normalizeSendLanguage(existing.getSendLanguage());
         Long effectiveConditionRuleVersionId = conditionRuleProvided
                 ? conditionRuleVersionId
                 : existing.getConditionRuleVersionId();
@@ -252,6 +392,7 @@ public class TaskTemplateService {
         update.setId(existing.getId());
         update.setName(normalizedName);
         update.setMode(normalizedMode);
+        update.setSendLanguage(normalizedSendLanguage);
         update.setTemplateHeaderId(templateHeaderRef);
         update.setDescription(normalizedDescription);
         mapper.updateById(update);
@@ -319,6 +460,7 @@ public class TaskTemplateService {
         create.setCode(buildCode(existing.getCode() + "_COPY"));
         create.setName(existing.getName() + " - Copy");
         create.setMode(existing.getMode());
+        create.setSendLanguage(normalizeSendLanguage(existing.getSendLanguage()));
         create.setTemplateHeaderId(existing.getTemplateHeaderId());
         create.setDescription(existing.getDescription());
         create.setStatus("Draft");
@@ -551,7 +693,6 @@ public class TaskTemplateService {
 
     private Map<String, FieldRegistry> listActiveFieldsByCode() {
         LocalDateTime nowDateTime = LocalDateTime.now();
-        Set<String> odataSystemTokenKeys = loadOdataSystemTokenKeys();
         return fieldRegistryMapper.selectList(new LambdaQueryWrapper<FieldRegistry>()
                         .eq(FieldRegistry::getStatus, "Active")
                         .orderByAsc(FieldRegistry::getSourceType)
@@ -562,7 +703,7 @@ public class TaskTemplateService {
                         row.getEffectiveEndDate(),
                         nowDateTime.toLocalDate()))
                 .filter(row -> row.getCode() != null && !row.getCode().isBlank())
-                .filter(row -> isTokenBackedField(row, odataSystemTokenKeys))
+                .filter(this::isTokenBackedField)
                 .collect(Collectors.toMap(
                         row -> normalizeTokenIdentity(row.getCode()),
                         row -> row,
@@ -570,27 +711,11 @@ public class TaskTemplateService {
                         LinkedHashMap::new));
     }
 
-    private Set<String> loadOdataSystemTokenKeys() {
-        try {
-            Set<String> keys = odataService.getSystemTokenKeys();
-            if (keys == null || keys.isEmpty()) {
-                return Set.of();
-            }
-            return keys.stream()
-                    .filter(key -> key != null && !key.isBlank())
-                    .map(TaskTemplateService::normalizeTokenIdentity)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-        } catch (Exception ignored) {
-            return Set.of();
-        }
-    }
-
-    private boolean isTokenBackedField(FieldRegistry field, Set<String> odataSystemTokenKeys) {
+    private boolean isTokenBackedField(FieldRegistry field) {
         if (!"System".equals(field.getSourceType())) {
             return true;
         }
-        String code = normalizeTokenIdentity(field.getCode());
-        return odataSystemTokenKeys.contains(code);
+        return UserMasterFieldCatalog.isTemplateToken(field.getCode());
     }
 
     private static String normalizeTokenIdentity(String value) {
@@ -713,6 +838,7 @@ public class TaskTemplateService {
                 row.getCode(),
                 row.getName(),
                 row.getMode(),
+                normalizeSendLanguage(row.getSendLanguage()),
                 row.getTemplateHeaderId(),
                 headerName,
                 row.getStatus(),
@@ -858,6 +984,9 @@ public class TaskTemplateService {
         if (templateKind != null && !templateKind.isBlank()
                 && !TemplateCenterService.TEMPLATE_KIND_TASK.equalsIgnoreCase(templateKind.trim())) {
             throw new BizException("Task Template 只能绑定 TASK 类型模板组");
+        }
+        if (TemplateCenterService.TEMPLATE_CODE_MAILBOX_BINDING_NOTIFICATION.equals(ref.getCode())) {
+            throw new BizException("邮箱绑定审批系统模板不能绑定到 Task Template");
         }
     }
 
@@ -1221,6 +1350,16 @@ public class TaskTemplateService {
         return normalized;
     }
 
+    private String normalizeSendLanguage(String sendLanguage) {
+        String normalized = sendLanguage == null || sendLanguage.isBlank()
+                ? "ZH"
+                : sendLanguage.trim().toUpperCase(Locale.ROOT);
+        if (!VALID_SEND_LANGUAGE.contains(normalized)) {
+            throw new BizException("发送语言仅支持 ZH / EN");
+        }
+        return normalized;
+    }
+
     private String normalizeStatus(String status) {
         if (status == null || status.isBlank()) throw new BizException("状态不能为空");
         String normalized = status.substring(0, 1).toUpperCase(Locale.ROOT) + status.substring(1).toLowerCase(Locale.ROOT);
@@ -1301,6 +1440,7 @@ public class TaskTemplateService {
             String code,
             String name,
             String mode,
+            String sendLanguage,
             Long templateHeaderId,
             String templateHeaderName,
             String status,
@@ -1321,6 +1461,36 @@ public class TaskTemplateService {
             boolean ownedByCurrentUser,
             boolean sharedToCurrentUser,
             String accessSource) {
+    }
+
+    public record ConditionRuleTaskTemplateBinding(
+            Long id,
+            String name,
+            String mode,
+            String status,
+            Long currentVersionId,
+            Integer currentVersionNo,
+            boolean canUpdate,
+            String accessSource) {
+    }
+
+    public record ConditionRuleBindingImpact(
+            Long ruleId,
+            String ruleName,
+            Long targetVersionId,
+            Integer targetVersionNo,
+            int affectedCount,
+            int updateableCount,
+            List<ConditionRuleTaskTemplateBinding> taskTemplates) {
+    }
+
+    public record ConditionRuleBindingUpdateResult(
+            Long ruleId,
+            Long targetVersionId,
+            Integer targetVersionNo,
+            int updatedCount,
+            int skippedCount,
+            int uneditableCount) {
     }
 
     public record BindingView(
@@ -1348,6 +1518,7 @@ public class TaskTemplateService {
             String code,
             String name,
             String mode,
+            String sendLanguage,
             Long templateHeaderId,
             String templateHeaderKey,
             String templateHeaderName,

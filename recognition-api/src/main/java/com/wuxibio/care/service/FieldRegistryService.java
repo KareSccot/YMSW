@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.common.enums.CommonStatus;
 import com.wuxibio.care.entity.FieldRegistry;
-import com.wuxibio.care.entity.FieldMapping;
 import com.wuxibio.care.mapper.FieldRegistryMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,18 +28,15 @@ public class FieldRegistryService {
     private static final Pattern CODE_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_]{1,63}$");
 
     private final FieldRegistryMapper mapper;
-    private final FieldMappingService fieldMappingService;
     private final ConditionExpressionService conditionExpressionService;
     private final TimeDependentService timeDependentService;
     private final ObjectMapper objectMapper;
 
     public FieldRegistryService(
             FieldRegistryMapper mapper,
-            FieldMappingService fieldMappingService,
             ConditionExpressionService conditionExpressionService,
             TimeDependentService timeDependentService) {
         this.mapper = mapper;
-        this.fieldMappingService = fieldMappingService;
         this.conditionExpressionService = conditionExpressionService;
         this.timeDependentService = timeDependentService;
         this.objectMapper = new ObjectMapper();
@@ -151,16 +147,8 @@ public class FieldRegistryService {
     }
 
     @Transactional
-    public int syncSystemFieldsFromOdata() {
-        return syncSystemFieldsFromMappings();
-    }
-
-    @Transactional
-    public int syncSystemFieldsFromMappings() {
-        List<FieldMapping> mappings = fieldMappingService.listTokenKeys();
-        if (mappings.isEmpty()) {
-            return 0;
-        }
+    public int syncSystemFieldsFromUserMaster() {
+        List<UserMasterFieldCatalog.FieldDefinition> fields = UserMasterFieldCatalog.templateFields();
 
         Map<String, FieldRegistry> existingByCode = mapper.selectList(
                         new LambdaQueryWrapper<FieldRegistry>())
@@ -172,21 +160,19 @@ public class FieldRegistryService {
                         LinkedHashMap::new));
 
         int changed = 0;
-        for (FieldMapping mapping : mappings) {
-            String code = mapping.getTokenKey() == null ? "" : mapping.getTokenKey().trim();
-            if (code.isBlank()) {
-                continue;
-            }
-            String srcField = mapping.getSourceField() != null ? mapping.getSourceField() : code;
-            String description = "来自字段映射：" + srcField;
+        for (UserMasterFieldCatalog.FieldDefinition field : fields) {
+            String code = field.fieldName();
+            String description = "来自本地人员主数据：sys_user." + toSnakeCase(field.fieldName());
+            String sourceBinding = userSourceBinding(field.fieldName());
             FieldRegistry existing = existingByCode.get(code.toLowerCase(Locale.ROOT));
             if (existing != null) {
-                String currentDescription = existing.getDescription() == null ? "" : existing.getDescription().trim();
-                if (currentDescription.startsWith("来自 OData 字段映射：")
-                        || currentDescription.startsWith("来自字段映射：")) {
+                if ("System".equals(existing.getSourceType())) {
                     FieldRegistry update = new FieldRegistry();
                     update.setId(existing.getId());
+                    update.setName(field.label());
+                    update.setDataType(field.dataType());
                     update.setDescription(description);
+                    update.setSourceBindingDefinition(sourceBinding);
                     mapper.updateById(update);
                     changed++;
                 }
@@ -194,14 +180,14 @@ public class FieldRegistryService {
             }
             FieldRegistry row = new FieldRegistry();
             row.setCode(code);
-            row.setName(mapping.getLabel() == null || mapping.getLabel().isBlank() ? code : mapping.getLabel().trim());
+            row.setName(field.label());
             row.setSourceType("System");
-            row.setDataType(mapping.getFieldType());
+            row.setDataType(field.dataType());
             row.setDescription(description);
             row.setSampleValue("");
             row.setMissingPolicy("BLOCK");
             row.setDefaultValue("");
-            row.setSourceBindingDefinition(normalizeSourceBindingDefinition(null, "System", code));
+            row.setSourceBindingDefinition(sourceBinding);
             row.setStatus("Active");
             row.setEffectiveStartDate(timeDependentService.normalizeStart(null));
             row.setEffectiveEndDate(timeDependentService.normalizeEnd(null));
@@ -263,9 +249,12 @@ public class FieldRegistryService {
             if ("Manual".equals(normalizedType)) {
                 defaultDefinition.put("type", "ROW");
                 defaultDefinition.put("path", normalizedFieldCode);
-            } else {
-                defaultDefinition.put("type", "SF");
+            } else if (COMPUTED_SYSTEM_CODES.contains(normalizedFieldCode)) {
+                defaultDefinition.put("type", "ROW");
                 defaultDefinition.put("path", normalizedFieldCode);
+            } else {
+                defaultDefinition.put("type", "USER");
+                defaultDefinition.put("field", canonicalUserField(normalizedFieldCode));
             }
             return toCanonicalJson(defaultDefinition);
         }
@@ -287,6 +276,16 @@ public class FieldRegistryService {
                     }
                     canonical.put("path", path);
                 }
+                case "USER" -> {
+                    String field = valueAsString(root.get("field"));
+                    if (field.isBlank()) {
+                        field = canonicalUserField(normalizedFieldCode);
+                    }
+                    if (!UserMasterFieldCatalog.isTemplateToken(field)) {
+                        throw new BizException("USER 类型必须引用可用的本地人员字段: " + field);
+                    }
+                    canonical.put("field", UserMasterFieldCatalog.canonicalFieldName(field));
+                }
                 case "CONSTANT" -> {
                     String value = valueAsString(root.get("value"));
                     canonical.put("value", value);
@@ -301,7 +300,7 @@ public class FieldRegistryService {
                     canonical.put("trueValue", valueAsString(root.get("trueValue")));
                     canonical.put("falseValue", valueAsString(root.get("falseValue")));
                 }
-                default -> throw new BizException("sourceBindingDefinition.type 仅支持 ROW/SF/CONSTANT/EXPRESSION");
+                default -> throw new BizException("sourceBindingDefinition.type 仅支持 ROW/USER/SF/CONSTANT/EXPRESSION");
             }
             return toCanonicalJson(canonical);
         } catch (BizException e) {
@@ -342,8 +341,25 @@ public class FieldRegistryService {
         if (code == null || code.isBlank()) return;
         if (COMPUTED_SYSTEM_CODES.contains(code)) return;
 
-        if (!fieldMappingService.getSystemTokenKeys().contains(code)) {
-            throw new BizException("System 字段必须先在字段映射中配置: " + code);
+        if (!UserMasterFieldCatalog.isTemplateToken(code)) {
+            throw new BizException("System 字段必须对应本地人员主数据字段: " + code);
         }
+    }
+
+    private String canonicalUserField(String fieldCode) {
+        String canonical = UserMasterFieldCatalog.canonicalFieldName(fieldCode);
+        return canonical.isBlank() ? fieldCode : canonical;
+    }
+
+    private String userSourceBinding(String fieldName) {
+        Map<String, Object> binding = new LinkedHashMap<>();
+        binding.put("type", "USER");
+        binding.put("field", fieldName);
+        return toCanonicalJson(binding);
+    }
+
+    private String toSnakeCase(String value) {
+        if (value == null || value.isBlank()) return "";
+        return value.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
     }
 }

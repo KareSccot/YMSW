@@ -1,6 +1,7 @@
 package com.wuxibio.care.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.TemplateChannelVariant;
@@ -35,7 +36,7 @@ public class TemplatePreviewService {
 
     /** Preview an already-persisted variant with empty sample data. */
     public Map<String, Object> previewStored(TemplateHeader header, TemplateChannelVariant variant) {
-        Map<String, String> tokenValues = buildPreviewTokenValues(variant, Map.of());
+        Map<String, String> tokenValues = buildTemplatePreviewTokenValues(variant);
         return buildPreviewResponse(header, variant, tokenValues);
     }
 
@@ -54,7 +55,7 @@ public class TemplatePreviewService {
      * Caller is responsible for normalizing the draft payload before invocation.
      */
     public Map<String, Object> previewDraft(TemplateHeader header, TemplateChannelVariant draftVariant) {
-        Map<String, String> tokenValues = buildPreviewTokenValues(draftVariant, Map.of());
+        Map<String, String> tokenValues = buildTemplatePreviewTokenValues(draftVariant);
         return buildPreviewResponse(header, draftVariant, tokenValues);
     }
 
@@ -98,6 +99,21 @@ public class TemplatePreviewService {
         }
     }
 
+    /** Render editor-only design JSON without risking unescaped token substitution. */
+    public String renderDesignJson(TemplateChannelVariant variant, Map<String, String> tokenValues) {
+        if (variant == null || variant.getDesignJson() == null || variant.getDesignJson().isBlank()) {
+            return variant == null ? null : variant.getDesignJson();
+        }
+        try {
+            Object design = objectMapper.readValue(variant.getDesignJson(), Object.class);
+            return objectMapper.writeValueAsString(renderObjectTokens(
+                    design,
+                    tokenValues == null ? Map.of() : tokenValues));
+        } catch (Exception e) {
+            throw new BizException("模板页面渲染失败: " + e.getMessage());
+        }
+    }
+
     // ---------------- private ----------------
 
     private Map<String, Object> buildPreviewResponse(
@@ -113,13 +129,18 @@ public class TemplatePreviewService {
 
         if ("DingTalk".equals(variant.getChannel())) {
             String messageType = templateRenderService.resolveVariantMessageType(variant);
-            Object renderedPayload = buildRenderedDingTalkPayload(variant, tokenValues);
+            String renderedDesignJson = renderDesignJson(variant, tokenValues);
+            Object renderedPayload = alignHostedLandingPreviewTarget(
+                    messageType,
+                    buildRenderedDingTalkPayload(variant, tokenValues),
+                    renderedDesignJson);
             result.put("previewType", "DINGTALK");
             result.put("mobilePreview", dingTalkPayloadService.buildDingTalkPreviewSurface(
                     "mobile", header.getName(), subject, messageType, renderedPayload));
             result.put("desktopPreview", dingTalkPayloadService.buildDingTalkPreviewSurface(
                     "desktop", header.getName(), subject, messageType, renderedPayload));
             result.put("renderedPayload", renderedPayload);
+            result.put("designJson", renderedDesignJson);
             return result;
         }
 
@@ -129,6 +150,20 @@ public class TemplatePreviewService {
         result.put("backgroundImageUrl", variant.getBackgroundImageUrl());
         result.put("designJson", variant.getDesignJson());
         return result;
+    }
+
+    private Map<String, String> buildTemplatePreviewTokenValues(TemplateChannelVariant variant) {
+        Map<String, String> values = buildPreviewTokenValues(variant, Map.of());
+        for (Map.Entry<String, String> token : templateRenderService.getSystemTokenPreviewValues().entrySet()) {
+            String key = safeStringValue(token.getKey()).trim();
+            if (key.isBlank()) continue;
+            if (safeStringValue(values.get(key)).isBlank()) {
+                String label = safeStringValue(token.getValue()).trim();
+                values.put(key, label.isBlank() ? key : label);
+            }
+        }
+        mergeCustomTokenDisplayFallbacks(values, variant == null ? null : variant.getTokensJson());
+        return values;
     }
 
     private Object buildRenderedDingTalkPayload(TemplateChannelVariant variant, Map<String, String> tokenValues) {
@@ -158,6 +193,41 @@ public class TemplatePreviewService {
         return payload;
     }
 
+    private Object alignHostedLandingPreviewTarget(
+            String messageType,
+            Object renderedPayload,
+            String renderedDesignJson) {
+        if (!(renderedPayload instanceof Map<?, ?> rawPayload)
+                || !isHostedLandingPage(renderedDesignJson)) {
+            return renderedPayload;
+        }
+
+        Map<String, Object> payload = dingTalkPayloadService.toStringObjectMap(rawPayload);
+        if ("link".equals(messageType)) {
+            Map<String, Object> link = dingTalkPayloadService.childMap(payload, "link");
+            link.put("messageUrl", "");
+            payload.put("link", link);
+        } else if ("action_card".equals(messageType)) {
+            Map<String, Object> actionCard = dingTalkPayloadService.childMap(payload, "action_card");
+            actionCard.put("single_url", "");
+            payload.put("action_card", actionCard);
+        }
+        return payload;
+    }
+
+    private boolean isHostedLandingPage(String designJson) {
+        if (designJson == null || designJson.isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode landingPage = objectMapper.readTree(designJson).path("dingTalkLandingPage");
+            return landingPage.isObject()
+                    && "HOSTED".equalsIgnoreCase(landingPage.path("destinationMode").asText(""));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void mergeCustomTokenPreviewValues(Map<String, String> values, String tokensJson) {
         if (tokensJson == null || tokensJson.isBlank()) {
             return;
@@ -169,6 +239,22 @@ public class TemplatePreviewService {
                 String key = safeStringValue(token.get("key")).trim();
                 if (key.isBlank()) continue;
                 values.putIfAbsent(key, safeStringValue(token.get("previewValue")));
+            }
+        } catch (Exception ignored) {
+            // Invalid custom token metadata should not break preview rendering.
+        }
+    }
+
+    private void mergeCustomTokenDisplayFallbacks(Map<String, String> values, String tokensJson) {
+        if (tokensJson == null || tokensJson.isBlank()) return;
+        try {
+            List<Map<String, Object>> tokens = objectMapper.readValue(tokensJson, new TypeReference<>() {});
+            for (Map<String, Object> token : tokens) {
+                if (token == null) continue;
+                String key = safeStringValue(token.get("key")).trim();
+                if (key.isBlank() || !safeStringValue(values.get(key)).isBlank()) continue;
+                String label = safeStringValue(token.get("label")).trim();
+                values.put(key, label.isBlank() ? key : label);
             }
         } catch (Exception ignored) {
             // Invalid custom token metadata should not break preview rendering.

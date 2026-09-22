@@ -1,0 +1,21 @@
+include:
+    - local: workflows/app-workflow.yml
+
+# there is currently no app to be built in this repo
+build-app:
+    rules:
+        - when: never
+
+
+# there is currently no container to be built in thie repo
+build-container:
+    rules:
+        - when: never
+
+deploy-dev:
+    rules:
+        - when: never
+
+deploy-uat:
+    rules:
+        - when: never

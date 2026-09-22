@@ -4,7 +4,6 @@ import com.wuxibio.care.channel.EmailChannel;
 import com.wuxibio.care.common.BizException;
 import com.wuxibio.care.entity.TemplateChannelVariant;
 import com.wuxibio.care.entity.TemplateHeader;
-import com.wuxibio.care.entity.TemplateTestSendLog;
 import com.wuxibio.care.mapper.SysUserMapper;
 import com.wuxibio.care.mapper.TaskTemplateMapper;
 import com.wuxibio.care.mapper.TemplateChannelVariantMapper;
@@ -21,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,19 +45,21 @@ class TemplateCenterPublishGateTest {
         testSendLogMapper = mock(TemplateTestSendLogMapper.class);
         auditLogService = mock(AuditLogService.class);
         previewService = mock(TemplatePreviewService.class);
+        TemplateTokenService tokenService = mock(TemplateTokenService.class);
+        when(tokenService.getSystemTokens()).thenReturn(List.of());
         service = new TemplateCenterService(
                 headerMapper,
                 variantMapper,
                 mock(TaskTemplateMapper.class),
                 mock(SysUserMapper.class),
                 testSendLogMapper,
-                mock(TemplateTokenService.class),
+                tokenService,
                 mock(TemplateManualFieldService.class),
                 mock(GovernanceService.class),
                 auditLogService,
                 mock(TimeDependentService.class),
-                mock(DingTalkPayloadService.class),
-                mock(TemplateRenderService.class),
+                new DingTalkPayloadService(),
+                new TemplateRenderService(tokenService),
                 previewService,
                 mock(TemplateTestSendService.class),
                 mock(EmailChannel.class));
@@ -72,13 +74,14 @@ class TemplateCenterPublishGateTest {
     void successfulStoredPreviewWritesPublishEvidence() {
         authenticateGlobalAdmin();
         TemplateHeader header = header();
-        TemplateChannelVariant variant = variant();
+        TemplateChannelVariant variant = emailVariant();
         when(headerMapper.selectById(10L)).thenReturn(header);
         when(variantMapper.selectById(20L)).thenReturn(variant);
         when(previewService.previewStored(header, variant)).thenReturn(Map.of("content", "preview"));
 
-        service.previewVariant("10", 20L);
+        Map<String, Object> preview = service.previewVariant("10", 20L);
 
+        assertThat(preview).containsEntry("publishEvidenceRecorded", true);
         verify(auditLogService).logWithDatabaseTimestamp(
                 "TEMPLATE_VARIANT_PREVIEW_SUCCESS",
                 "TEMPLATE_CHANNEL_VARIANT",
@@ -90,12 +93,12 @@ class TemplateCenterPublishGateTest {
     void successfulDraftPreviewWritesEvidenceOnlyWhenItMatchesTheStoredVariant() {
         authenticateGlobalAdmin();
         TemplateHeader header = header();
-        TemplateChannelVariant variant = variant();
+        TemplateChannelVariant variant = emailVariant();
         when(headerMapper.selectById(10L)).thenReturn(header);
         when(variantMapper.selectById(20L)).thenReturn(variant);
         when(previewService.previewDraft(any(), any())).thenReturn(Map.of("content", "preview"));
 
-        service.previewVariantDraft(
+        Map<String, Object> preview = service.previewVariantDraft(
                 "10",
                 20L,
                 "email_html",
@@ -106,6 +109,7 @@ class TemplateCenterPublishGateTest {
                 null,
                 null);
 
+        assertThat(preview).containsEntry("publishEvidenceRecorded", true);
         verify(auditLogService).logWithDatabaseTimestamp(
                 "TEMPLATE_VARIANT_PREVIEW_SUCCESS",
                 "TEMPLATE_CHANNEL_VARIANT",
@@ -117,12 +121,12 @@ class TemplateCenterPublishGateTest {
     void unsavedDraftPreviewDoesNotQualifyTheStoredVariantForPublish() {
         authenticateGlobalAdmin();
         TemplateHeader header = header();
-        TemplateChannelVariant variant = variant();
+        TemplateChannelVariant variant = emailVariant();
         when(headerMapper.selectById(10L)).thenReturn(header);
         when(variantMapper.selectById(20L)).thenReturn(variant);
         when(previewService.previewDraft(any(), any())).thenReturn(Map.of("content", "preview"));
 
-        service.previewVariantDraft(
+        Map<String, Object> preview = service.previewVariantDraft(
                 "10",
                 20L,
                 "email_html",
@@ -133,53 +137,115 @@ class TemplateCenterPublishGateTest {
                 null,
                 null);
 
+        assertThat(preview)
+                .containsEntry("publishEvidenceRecorded", false)
+                .containsEntry("publishEvidenceReason", "SAVE_REQUIRED");
         verify(auditLogService, never()).logWithDatabaseTimestamp(any(), any(), any(), any());
     }
 
     @Test
-    void publishRequiresBothSuccessfulPreviewAndSuccessfulTestSend() {
-        TemplateChannelVariant variant = variant();
+    void linkDraftPreviewTreatsLegacyMissingCropZoomAsTheSavedDefault() {
+        authenticateGlobalAdmin();
+        TemplateHeader header = header();
+        TemplateChannelVariant variant = dingTalkLinkVariant();
+        when(headerMapper.selectById(10L)).thenReturn(header);
+        when(variantMapper.selectById(20L)).thenReturn(variant);
+        when(previewService.previewDraft(any(), any())).thenReturn(Map.of("content", "preview"));
+
+        String draftDesignJson = variant.getDesignJson().replace(
+                "\"sourceUrl\":\"/api/v1/templates/images/source.jpg\"",
+                "\"zoom\":100,\"sourceUrl\":\"/api/v1/templates/images/source.jpg\"");
+        Map<String, Object> preview = service.previewVariantDraft(
+                "10",
+                20L,
+                "link",
+                "五载同行，感谢有你",
+                "五载同行，感谢有你",
+                null,
+                draftDesignJson,
+                variant.getChannelPayloadJson(),
+                null);
+
+        assertThat(preview).containsEntry("publishEvidenceRecorded", true);
+        verify(auditLogService).logWithDatabaseTimestamp(
+                "TEMPLATE_VARIANT_PREVIEW_SUCCESS",
+                "TEMPLATE_CHANNEL_VARIANT",
+                "20",
+                "headerId=10, channel=DingTalk");
+    }
+
+    @Test
+    void emailPublishRequiresOnlyFreshSuccessfulPreview() {
+        TemplateChannelVariant variant = emailVariant();
         when(auditLogService.latestOperationAt(any(), any(), any()))
                 .thenReturn(LocalDateTime.of(2026, 7, 31, 11, 0));
-        when(testSendLogMapper.selectOne(any()))
-                .thenReturn(successfulTestSend(LocalDateTime.of(2026, 7, 31, 11, 5)));
 
         assertThatCode(() -> invokePublishGate(variant)).doesNotThrowAnyException();
+        verify(testSendLogMapper, never()).selectOne(any());
     }
 
     @Test
-    void publishRejectsWhenNeitherRequiredActionIsComplete() {
-        TemplateChannelVariant variant = variant();
+    void emailPublishRejectsWhenPreviewIsMissing() {
+        TemplateChannelVariant variant = emailVariant();
 
         assertThatThrownBy(() -> invokePublishGate(variant))
                 .isInstanceOf(BizException.class)
-                .hasMessage("发布前必须完成一次成功的模板预览和一次成功的测试发送");
+                .hasMessage("发布前必须完成一次成功的模板预览");
+        verify(testSendLogMapper, never()).selectOne(any());
     }
 
     @Test
-    void publishRejectsWhenPreviewIsMissingOrOlderThanLatestEdit() {
-        TemplateChannelVariant variant = variant();
+    void emailPublishRejectsWhenPreviewIsOlderThanLatestEdit() {
+        TemplateChannelVariant variant = emailVariant();
         when(auditLogService.latestOperationAt(any(), any(), any()))
                 .thenReturn(LocalDateTime.of(2026, 7, 31, 9, 59));
-        when(testSendLogMapper.selectOne(any()))
-                .thenReturn(successfulTestSend(LocalDateTime.of(2026, 7, 31, 11, 5)));
 
         assertThatThrownBy(() -> invokePublishGate(variant))
                 .isInstanceOf(BizException.class)
-                .hasMessage("发布前还必须完成一次成功的模板预览");
+                .hasMessage("发布前必须完成一次成功的模板预览");
+        verify(testSendLogMapper, never()).selectOne(any());
     }
 
     @Test
-    void publishRejectsWhenTestSendIsMissingOrOlderThanLatestEdit() {
-        TemplateChannelVariant variant = variant();
+    void dingTalkPublishRequiresOnlyFreshSuccessfulPreview() {
+        TemplateChannelVariant variant = dingTalkVariant();
         when(auditLogService.latestOperationAt(any(), any(), any()))
                 .thenReturn(LocalDateTime.of(2026, 7, 31, 11, 0));
-        when(testSendLogMapper.selectOne(any()))
-                .thenReturn(successfulTestSend(LocalDateTime.of(2026, 7, 31, 9, 59)));
+
+        assertThatCode(() -> invokePublishGate(variant)).doesNotThrowAnyException();
+        verify(testSendLogMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void dingTalkPublishAcceptsPreviewRecordedAtLatestEditTime() {
+        TemplateChannelVariant variant = dingTalkVariant();
+        when(auditLogService.latestOperationAt(any(), any(), any()))
+                .thenReturn(LocalDateTime.of(2026, 7, 31, 10, 0));
+
+        assertThatCode(() -> invokePublishGate(variant)).doesNotThrowAnyException();
+        verify(testSendLogMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void dingTalkPublishRejectsWhenPreviewIsMissing() {
+        TemplateChannelVariant variant = dingTalkVariant();
 
         assertThatThrownBy(() -> invokePublishGate(variant))
                 .isInstanceOf(BizException.class)
-                .hasMessage("发布前还必须完成一次成功的测试发送");
+                .hasMessage("发布前必须完成一次成功的模板预览");
+        verify(testSendLogMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void dingTalkPublishRejectsWhenPreviewIsOlderThanLatestEdit() {
+        TemplateChannelVariant variant = dingTalkVariant();
+        when(auditLogService.latestOperationAt(any(), any(), any()))
+                .thenReturn(LocalDateTime.of(2026, 7, 31, 9, 59));
+
+        assertThatThrownBy(() -> invokePublishGate(variant))
+                .isInstanceOf(BizException.class)
+                .hasMessage("发布前必须完成一次成功的模板预览");
+        verify(testSendLogMapper, never()).selectOne(any());
     }
 
     private void invokePublishGate(TemplateChannelVariant variant) {
@@ -193,7 +259,7 @@ class TemplateCenterPublishGateTest {
         return header;
     }
 
-    private TemplateChannelVariant variant() {
+    private TemplateChannelVariant emailVariant() {
         TemplateChannelVariant variant = new TemplateChannelVariant();
         variant.setId(20L);
         variant.setTemplateHeaderId(10L);
@@ -205,11 +271,55 @@ class TemplateCenterPublishGateTest {
         return variant;
     }
 
-    private TemplateTestSendLog successfulTestSend(LocalDateTime createdAt) {
-        TemplateTestSendLog log = new TemplateTestSendLog();
-        log.setStatus("Success");
-        log.setCreatedAt(createdAt);
-        return log;
+    private TemplateChannelVariant dingTalkVariant() {
+        TemplateChannelVariant variant = emailVariant();
+        variant.setChannel("DingTalk");
+        variant.setMessageType("text");
+        variant.setSubject(null);
+        return variant;
+    }
+
+    private TemplateChannelVariant dingTalkLinkVariant() {
+        TemplateChannelVariant variant = new TemplateChannelVariant();
+        variant.setId(20L);
+        variant.setTemplateHeaderId(10L);
+        variant.setChannel("DingTalk");
+        variant.setMessageType("link");
+        variant.setSubject("五载同行，感谢有你");
+        variant.setContent("五载同行，感谢有你");
+        variant.setDesignJson("""
+                {
+                  "dingTalkUiState": {
+                    "link": {
+                      "crop": {
+                        "x": 100,
+                        "y": 47.93,
+                        "width": 100,
+                        "height": 100,
+                        "sourceUrl": "/api/v1/templates/images/source.jpg"
+                      }
+                    }
+                  },
+                  "dingTalkLandingPage": {
+                    "destinationMode": "HOSTED",
+                    "contentMode": "HTML",
+                    "html": "<p>消息详情</p>"
+                  }
+                }
+                """);
+        variant.setChannelPayloadJson("""
+                {
+                  "msgtype": "link",
+                  "link": {
+                    "title": "五载同行，感谢有你",
+                    "text": "你好，感谢五年并肩同行。",
+                    "messageUrl": "",
+                    "picUrl": "/api/v1/templates/images/cover.jpg"
+                  }
+                }
+                """);
+        variant.setUpdatedAt(LocalDateTime.of(2026, 7, 31, 10, 0));
+        return variant;
     }
 
     private void authenticateGlobalAdmin() {

@@ -39,8 +39,27 @@ public class TemplateSenderMailboxService {
             String fromAddress,
             String fromName,
             String lastTestResult,
+            String ownerEmployeeId,
+            Long ownerUserId,
+            String ownerName,
             Map<String, String> config,
             Map<String, String> metadata) {
+        public Resolution(
+                String source,
+                Long senderMailboxId,
+                Long externalConnectionId,
+                String name,
+                String host,
+                String port,
+                String username,
+                String fromAddress,
+                String fromName,
+                String lastTestResult,
+                Map<String, String> config,
+                Map<String, String> metadata) {
+            this(source, senderMailboxId, externalConnectionId, name, host, port, username,
+                    fromAddress, fromName, lastTestResult, null, null, null, config, metadata);
+        }
     }
 
     public Resolution resolveForTemplateHeader(Long templateHeaderId) {
@@ -88,7 +107,10 @@ public class TemplateSenderMailboxService {
                 resolution.username(),
                 resolution.fromAddress(),
                 resolution.fromName(),
-                resolution.lastTestResult());
+                resolution.lastTestResult(),
+                resolution.ownerEmployeeId(),
+                resolution.ownerUserId(),
+                resolution.ownerName());
     }
 
     private Resolution resolveSenderMailbox(Long senderMailboxId) {
@@ -111,6 +133,9 @@ public class TemplateSenderMailboxService {
                 defaultIfBlank(config.get("fromAddress"), config.get("username")),
                 defaultIfBlank(config.get("fromName"), "员工认可管理平台"),
                 mailbox.getLastTestResult(),
+                mailbox.getOwnerEmployeeId(),
+                null,
+                null,
                 config,
                 metadata);
     }
@@ -135,6 +160,9 @@ public class TemplateSenderMailboxService {
                 defaultIfBlank(config.get("fromAddress"), config.get("username")),
                 defaultIfBlank(config.get("fromName"), "员工认可管理平台"),
                 connection.lastTestResult(),
+                null,
+                null,
+                null,
                 config,
                 metadata);
     }

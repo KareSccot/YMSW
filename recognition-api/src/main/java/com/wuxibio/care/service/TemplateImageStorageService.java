@@ -52,25 +52,18 @@ public class TemplateImageStorageService {
     }
 
     public String storeImage(MultipartFile file, String scope, String extension) throws IOException {
-        String safeScope = normalizeScope(scope);
-        if (safeScope.isBlank()) {
-            safeScope = DEFAULT_SCOPE;
+        ImageTarget imageTarget = prepareTarget(scope, extension);
+        file.transferTo(imageTarget.target().toFile());
+        return imageTarget.relativePath();
+    }
+
+    public String storeImage(byte[] content, String scope, String extension) throws IOException {
+        if (content == null || content.length == 0) {
+            throw new BizException("图片内容不能为空");
         }
-        String safeExtension = normalizeExtension(extension);
-        String filename = UUID.randomUUID().toString().substring(0, 8)
-                + "_" + System.currentTimeMillis()
-                + "." + safeExtension;
-        Path scopeDir = imageRoot.resolve(safeScope).normalize();
-        if (!scopeDir.startsWith(imageRoot)) {
-            throw new BizException("非法图片目录");
-        }
-        Files.createDirectories(scopeDir);
-        Path target = scopeDir.resolve(filename).normalize();
-        if (!target.startsWith(scopeDir)) {
-            throw new BizException("非法图片路径");
-        }
-        file.transferTo(target.toFile());
-        return safeScope + "/" + filename;
+        ImageTarget imageTarget = prepareTarget(scope, extension);
+        Files.write(imageTarget.target(), content);
+        return imageTarget.relativePath();
     }
 
     public Path resolveImage(String relativePath) {
@@ -235,6 +228,27 @@ public class TemplateImageStorageService {
         return ext;
     }
 
+    private ImageTarget prepareTarget(String scope, String extension) throws IOException {
+        String safeScope = normalizeScope(scope);
+        if (safeScope.isBlank()) {
+            safeScope = DEFAULT_SCOPE;
+        }
+        String safeExtension = normalizeExtension(extension);
+        String filename = UUID.randomUUID().toString().substring(0, 8)
+                + "_" + System.currentTimeMillis()
+                + "." + safeExtension;
+        Path scopeDir = imageRoot.resolve(safeScope).normalize();
+        if (!scopeDir.startsWith(imageRoot)) {
+            throw new BizException("非法图片目录");
+        }
+        Files.createDirectories(scopeDir);
+        Path target = scopeDir.resolve(filename).normalize();
+        if (!target.startsWith(scopeDir)) {
+            throw new BizException("非法图片路径");
+        }
+        return new ImageTarget(target, safeScope + "/" + filename);
+    }
+
     private Path resolveImageRoot(String configuredImageDir) {
         String value = configuredImageDir == null ? "" : configuredImageDir.trim();
         if (value.isBlank()) {
@@ -259,5 +273,8 @@ public class TemplateImageStorageService {
     }
 
     public record ImageAssetInfo(String relativePath, long lastModifiedMillis) {
+    }
+
+    private record ImageTarget(Path target, String relativePath) {
     }
 }

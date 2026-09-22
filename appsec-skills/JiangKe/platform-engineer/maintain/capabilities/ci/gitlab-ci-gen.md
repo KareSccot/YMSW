@@ -1,4 +1,4 @@
-﻿# gitlab-ci-gen
+# gitlab-ci-gen
 
 ## 能力描述
 
@@ -118,11 +118,12 @@
 - 现有 Java 编译镜像：
   - A. jdk8.0.312_mvn3.0.5（OpenJDK 8 + Maven 3.0.5，老项目）
   - B. jdk11.0.16_mvn3.0.5（OpenJDK 11 + Maven 3.0.5）
-  - C. jdk21_with_gradle_mvn（OpenJDK 21 + Maven + Gradle，cicd-template 默认）
+  - C. jdk17.0.11_9_mvn3.9.6（OpenJDK 17 + Maven 3.9.6，已知 tag：feat-java-test-project-images-129984）
+  - D. jdk21_with_gradle_mvn（OpenJDK 21 + Maven + Gradle，cicd-template 默认）
 - 现有 Node 编译镜像：
-  - D. node16.16.0_npm8.11.0（Node 16.16 + npm 8.11，老项目）
-  - E. node18_npm9.8.1（Node 18 + npm 9.8.1）
-  - F. node24.11.1_npm11.6.4（Node 24.11 + npm 11.6，最新）
+  - E. node16.16.0_npm8.11.0（Node 16.16 + npm 8.11，老项目）
+  - F. node18_npm9.8.1（Node 18 + npm 9.8.1）
+  - G. node24.11.1_npm11.6.4（Node 24.11 + npm 11.6，最新）
 - 判断标准：看 pom.xml 的 java.version / maven.compiler.source，或 package.json 的 engines.node
 - 影响：写入 .gitlab-ci.yml 的 build-app.image
 - 注意：编译镜像不要用作 Dockerfile 的 FROM！如果需要的版本不在 catalog，联系平台工程师在 base-image-builder 仓库加，不要自己打镜像
@@ -133,6 +134,7 @@
 - 现有 Java 运行时镜像：
   - A. jre8u312（OpenJDK 8 JRE-slim + appuser）
   - B. jre11.0.16（OpenJDK 11 JRE-slim + appuser）
+  - C. jre17.0.11_9（OpenJDK 17 JRE-slim + appuser，已知 tag：feat-java-test-project-images-130083）
 - Python/Go/前端无专用运行时镜像，用语言官方 slim 镜像（如 python:3.12-slim）或 nginx:1.29.4-alpine
 - 判断标准：和第 8 题编译镜像的 Java 大版本对齐（编译选 jdk11 → 运行时选 jre11.0.16）
 - 影响：写入 Dockerfile 的 FROM（参数化模式由 DOCKER_BUILD_ARGS 注入）

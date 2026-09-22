@@ -1,0 +1,24 @@
+{
+  "dingtalk": {
+    "enabled": true,
+    "base_id": "dummy_base_id",
+    "operator_id": "dummy_operator",
+    "app_key": "dummy_key",
+    "app_secret": "dummy_secret",
+    "tables": {
+      "daily_token_overview": {
+        "sheet_id_or_name": "sheet1"
+      },
+      "monthly_bu_ou_vendor": {
+        "sheet_id_or_name": "sheet2"
+      },
+      "daily_fact": {
+        "sheet_id_or_name": "sheet3"
+      },
+      "api7_audit": {
+        "sheet_id_or_name": "sheet4"
+      }
+    },
+    "batch_size": 100
+  }
+}

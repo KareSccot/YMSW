@@ -156,6 +156,7 @@ public class HtmlToImageService {
                     "--hide-scrollbars",
                     "--run-all-compositor-stages-before-draw",
                     "--force-device-scale-factor=" + deviceScaleFactor,
+                    "--force-color-profile=srgb",
                     "--font-render-hinting=none",
                     "--lang=zh-CN",
                     "--user-data-dir=" + userDataDir.toAbsolutePath(),

@@ -1,4 +1,4 @@
-﻿# dockerfile-gen
+# dockerfile-gen
 
 Dockerfile 生成与审查子模块。父 SKILL.md 在前置检查收集参数后 Read 本模块执行。
 
@@ -40,6 +40,8 @@ Dockerfile 生成与审查子模块。父 SKILL.md 在前置检查收集参数�
 | B（简单） | Java | `resources/templates/Dockerfile.java-jre.example` |
 | B（简单） | Node 后端 | `resources/templates/Dockerfile.node.example` |
 | 任意 | Python | `resources/templates/Dockerfile.python.example` |
+| B（简单） | Go | `resources/templates/Dockerfile.go.example` |
+| A（参数化） | Go | `resources/templates/Dockerfile.go.example`（参数化时 ARG GO_VERSION 注入） |
 
 ### 生成时按 用户回答填空
 

@@ -8,9 +8,11 @@ import com.wuxibio.care.dto.MdLookupItem;
 import com.wuxibio.care.entity.MasterDataCompany;
 import com.wuxibio.care.entity.MasterDataCountry;
 import com.wuxibio.care.entity.MasterDataDepartment;
+import com.wuxibio.care.entity.MasterDataRuleReference;
 import com.wuxibio.care.mapper.MasterDataCompanyMapper;
 import com.wuxibio.care.mapper.MasterDataCountryMapper;
 import com.wuxibio.care.mapper.MasterDataDepartmentMapper;
+import com.wuxibio.care.mapper.MasterDataRuleReferenceMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -36,9 +38,10 @@ class MasterDataLookupServiceTest {
     @Mock private MasterDataDepartmentMapper departmentMapper;
     @Mock private MasterDataCountryMapper countryMapper;
     @Mock private MasterDataCompanyMapper companyMapper;
+    @Mock private MasterDataRuleReferenceMapper ruleReferenceMapper;
 
     private MasterDataLookupService service() {
-        return new MasterDataLookupService(departmentMapper, countryMapper, companyMapper);
+        return new MasterDataLookupService(departmentMapper, countryMapper, companyMapper, ruleReferenceMapper);
     }
 
     @Test
@@ -151,6 +154,24 @@ class MasterDataLookupServiceTest {
 
         assertEquals("中国", result.get("CN").getLabelZh());
         assertEquals("中国", result.get("156").getLabelZh());
+    }
+
+    @Test
+    void batchLookupByCodes_ruleReferenceReturnsBilingualLabels() {
+        MasterDataRuleReference row = new MasterDataRuleReference();
+        row.setDimension(MasterDataLookupService.DIMENSION_JOB_TITLE);
+        row.setExternalCode("723047");
+        row.setLabelZhCn("人力资源管理助理主任");
+        row.setLabelEnUs("HR Management Assistant Director");
+        row.setStatus("A");
+        when(ruleReferenceMapper.selectList(any())).thenReturn(List.of(row));
+
+        Map<String, MdLookupItem> result = service().batchLookupByCodes(
+                MasterDataLookupService.DIMENSION_JOB_TITLE,
+                List.of("723047"));
+
+        assertEquals("人力资源管理助理主任", result.get("723047").getLabelZh());
+        assertEquals("HR Management Assistant Director", result.get("723047").getLabelEn());
     }
 
     @Test

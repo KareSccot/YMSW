@@ -164,7 +164,8 @@ class AutoTriggerServiceExecutionTest {
         TaskRun run = taskRun();
         stubSubmittedExecution(trigger, run);
         when(taskTemplateService.getExecutableTemplateForSystem(7L)).thenReturn(template);
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(employee("E100", "HR"), employee("E200", "IT")));
+        when(conditionRuleService.ruleContexts(eq(77L), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(List.of(employee("E100", "HR"), employee("E200", "IT")));
         when(conditionRuleService.validateConsumerFields(eq(77L), any())).thenReturn(List.of());
         when(conditionRuleService.evaluateVersion(eq(77L), anyMap(), any(LocalDate.class)))
                 .thenAnswer(invocation -> {
@@ -202,7 +203,8 @@ class AutoTriggerServiceExecutionTest {
         template.setConditionRuleVersionId(77L);
         stubSubmittedExecution(trigger, taskRun());
         when(taskTemplateService.getExecutableTemplateForSystem(7L)).thenReturn(template);
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(employee("E200", "IT")));
+        when(conditionRuleService.ruleContexts(eq(77L), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(List.of(employee("E200", "IT")));
         when(conditionRuleService.validateConsumerFields(eq(77L), any())).thenReturn(List.of());
         when(conditionRuleService.evaluateVersion(eq(77L), anyMap(), any(LocalDate.class)))
                 .thenReturn(new ConditionExpressionService.EvaluationResult(false, "JSON", List.of(), List.of()));
@@ -239,7 +241,8 @@ class AutoTriggerServiceExecutionTest {
     void previewScopeUsesPublishedRuleVersionAndExplicitEvaluationDate() {
         LocalDate evaluationDate = LocalDate.of(2026, 7, 16);
         when(conditionRuleService.validateConsumerFields(eq(77L), any())).thenReturn(List.of());
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(employee("E100", "HR"), employee("E200", "IT")));
+        when(conditionRuleService.ruleContexts(eq(77L), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(List.of(employee("E100", "HR"), employee("E200", "IT")));
         when(conditionRuleService.evaluateVersion(eq(77L), anyMap(), eq(evaluationDate)))
                 .thenAnswer(invocation -> {
                     Map<String, String> row = invocation.getArgument(1);

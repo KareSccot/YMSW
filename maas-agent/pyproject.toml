@@ -1,0 +1,38 @@
+[project]
+name = "maas-usage-agent"
+version = "0.1.0"
+description = "MaaS token usage AI agent (DingTalk Stream bot) + pipeline CronJob loader."
+requires-python = ">=3.11"
+dependencies = [
+    # agent 框架（轻量，替代 langchain/langgraph）
+    "pydantic-ai>=0.0.30",
+    # 数据库(PG 生产 + SQLite 本地/轻量)
+    "psycopg[binary,pool]>=3.2.0",
+    "aiosqlite>=0.20.0",
+    # web（仅 /health /metrics 小服务）
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    # HTTP 客户端（webhook 告警）
+    "httpx>=0.27.0",
+    # 钉钉 Stream 机器人（bot.py 用）
+    "dingtalk-stream>=0.24.0",
+    "pydantic-ai-harness",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "agent*", "pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

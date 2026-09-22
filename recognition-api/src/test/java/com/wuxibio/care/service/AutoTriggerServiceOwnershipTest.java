@@ -203,6 +203,7 @@ class AutoTriggerServiceOwnershipTest {
                 "TT-007",
                 "Owned template",
                 "Auto",
+                "ZH",
                 null,
                 null,
                 null,
