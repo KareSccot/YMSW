@@ -1,0 +1,25 @@
+{
+  "id": "agentic-tracing",
+  "name": "Agentic Tracing",
+  "version": "1.0.0",
+  "author": "GDT",
+  "summary": {
+    "en": "Installs a durable tracing spine (docs/changes + PRD/design snapshots + changelog + decision log) plus AGENTS.md and hooks so important agent-driven changes are recorded and kept from drifting.",
+    "zh": "一次性安装可持续的追踪骨架（docs/changes + PRD/设计活文档快照 + changelog + 决策日志）以及 AGENTS.md 和 hooks，让智能体驱动的 SDLC 重要变更被记录、跟踪，并在持续开发中不跑偏。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "automation",
+    "workflow"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-08-05",
+  "updated_at": "2026-08-05"
+}

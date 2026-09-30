@@ -1,0 +1,60 @@
+{
+  "skill_name": "ui-design-refiner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review the design of an internal clinical-operations dashboard. The user is a study manager who opens it every morning to find risks requiring action. The current screen starts with eight equal-size metric cards in saturated blue, purple, green, and orange; each has an icon, a large number, a sparkline, and a shadow. Below them is a large enrollment chart. A table titled \"Participants needing attention\" is below the fold and mixes overdue visits, missing consent, and harmless incomplete profile fields. The top-right has four equally prominent buttons: Export, Add participant, Generate report, and Settings. Give me an evidence-based design critique and a prioritized redesign direction. Do not write a full page or choose design-system tokens.",
+      "expected_output": "A critique that reconstructs the study manager's information/action priorities, identifies the buried actionable risk list and competing anchors as structural problems, checks state/consequence/recovery rather than only aesthetics, distinguishes necessary density from clutter, and proposes a restrained hierarchy with one main anchor. It should state what to preserve/remove/strengthen and avoid generic recommendations to add gradients, cards, or whitespace.",
+      "files": [],
+      "expectations": [
+        "The response identifies the study manager's morning risk-triage outcome before discussing visual styling.",
+        "The response treats the buried mixed-severity attention table and eight equal metric cards as information-priority problems, not merely color or spacing problems.",
+        "The response addresses action hierarchy or consequence, including the four equally prominent buttons.",
+        "The recommendations preserve useful operational density while removing competing emphasis or decorative noise.",
+        "The response gives a prioritized, evidence-backed direction without producing a full-page implementation.",
+        "The response distinguishes supplied observations from user-effect hypotheses and does not rely on unverified external claims as proof."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Design the frontend direction for a B2B data-curation work queue used by expert reviewers. Each reviewer processes 150–300 records per day. For each record they compare a source excerpt with an AI-proposed normalized value, inspect confidence and provenance, then accept, edit, or escalate it. Bulk accept exists but is consequential and must be reviewable. The product should feel rigorous, calm, and quietly capable—not playful, luxurious, or futuristic. There is no named design system yet. Define the screen-level information structure, interaction and visual language, product personality, state coverage, and a small surprise budget. Stay framework-agnostic and do not generate a complete page.",
+      "expected_output": "A framework-agnostic design direction derived from expert frequency, density, AI uncertainty, provenance, and action risk. It should keep source/proposal comparison near decisions, make bulk action scope inspectable and reversible, establish a compact semantic grammar and calm personality, cover loading/empty/error/conflict/saved states plus accessibility, and budget any delight so it does not interrupt high-frequency work.",
+      "files": [],
+      "expectations": [
+        "The response declares premises from the high-frequency expert workflow, AI uncertainty, and consequential bulk action.",
+        "The information structure colocates source evidence, proposed value, confidence/provenance, and review actions in decision order.",
+        "The bulk action design exposes the complete candidate scope before commitment and supports removal, cancellation, correction, or undo rather than relying only on a sample.",
+        "The visual language and personality are expressed as repeatable semantic rules rather than copied brand surfaces or unsupported numeric token prescriptions.",
+        "The response covers relevant states and accessibility, and keeps surprise scarce in the high-frequency workflow."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Refine only this React + Tailwind component so an import result communicates state and next action more clearly. Keep the existing stack and public props; do not build the rest of the page.\n\n```tsx\ntype ImportStatusProps = {\n  imported: number;\n  failed: number;\n  onViewErrors: () => void;\n  onContinue: () => void;\n};\n\nexport function ImportStatus({ imported, failed, onViewErrors, onContinue }: ImportStatusProps) {\n  return (\n    <div className=\"rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 p-8 text-white shadow-2xl\">\n      <div className=\"mb-4 flex items-center gap-3\">\n        <span className=\"text-3xl\">✨</span>\n        <h2 className=\"text-2xl font-bold\">Import complete!</h2>\n      </div>\n      <div className=\"mb-6 grid grid-cols-2 gap-4\">\n        <div className=\"rounded-xl bg-white/20 p-4\"><strong className=\"text-3xl\">{imported}</strong><p>Imported</p></div>\n        <div className=\"rounded-xl bg-white/20 p-4\"><strong className=\"text-3xl\">{failed}</strong><p>Failed</p></div>\n      </div>\n      <div className=\"flex gap-3\">\n        <button className=\"rounded-full bg-white px-5 py-3 font-bold text-purple-700\" onClick={onViewErrors}>View errors</button>\n        <button className=\"rounded-full bg-yellow-300 px-5 py-3 font-bold text-black\" onClick={onContinue}>Continue</button>\n      </div>\n    </div>\n  );\n}\n```\n\nReturn a short diagnosis and the revised component code. The component must handle both `failed === 0` and `failed > 0`, preserve semantic DOM/focus order, and keep the change atomic.",
+      "expected_output": "A concise diagnosis tied to ambiguous completion state and competing emphasis, followed by one component-sized revision. The code should conditionally distinguish full success from partial failure, make error review primary when failures exist and Continue primary otherwise, use restrained neutral/semantic styling instead of decorative gradient and emoji, preserve props and focus order, and include understandable status text without relying on color alone.",
+      "files": [],
+      "expectations": [
+        "The diagnosis explains that partial failure makes the unconditional success message and equal action emphasis misleading.",
+        "The revised component preserves the existing props and remains component-scoped.",
+        "The rendered heading, explanation, and action priority change meaningfully between zero failures and one-or-more failures, without overclaiming success when both counts are zero.",
+        "The component communicates status with text and semantic structure rather than color alone, while preserving logical DOM and focus order.",
+        "Any ARIA ID is unique across repeated component instances, or the implementation avoids a collision-prone static ID.",
+        "The implementation removes gratuitous decorative emphasis and does not introduce a new framework, full page, or unrelated abstraction."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "优化这个 SaaS 项目管理产品的「项目总览」页面，端到端地把它做得更有设计感，并最终产出一份可复用的设计系统文档（DESIGN.md）。\n\n当前状态：顶部是一整排 6 个同样大小、同样蓝紫渐变的统计卡片（进行中项目、逾期任务、本周完成、团队成员、预算使用、风险数），每张卡都有图标、大数字和阴影。中间是一个巨大的甘特图占了大半屏。下面才是「需要我处理的事项」列表，混杂了逾期审批、待我评论、以及无关紧要的「有人更新了头像」通知，全部一个样式。右上角并排放着五个同等醒目的按钮：新建项目、导出、筛选、通知、设置。产品面向的是每天早上打开它排优先级的项目经理，需要快速看到哪些事情卡住了、需要他决策。目前没有命名设计系统。\n\n请走完整的优化流程：先给评估报告，再做由粗到细的升级（最多 4 轮），最后输出 DESIGN.md。保持框架无关，不需要写完整页面代码。",
+      "expected_output": "An end-to-end optimize run: (1) a design-evaluation report grounded in the project manager's morning triage goal, identifying the buried mixed-severity action list, six equal metric cards, oversized Gantt, and five equal buttons as structural/priority problems, with current and target maturity; (2) a coarse-to-fine upgrade loop that fixes structure first (one anchor, actionable items surfaced, action hierarchy) before hierarchy, language, and detail, with visible per-pass reasoning and a cap of four passes; (3) a valid DESIGN.md with YAML front-matter tokens (colors incl. primary, typography, rounded, spacing, components) and ordered prose sections (Overview through Do's and Don'ts) whose personality traces to the premises. It should stay framework-agnostic and not dump a full page implementation.",
+      "files": [],
+      "expectations": [
+        "The response begins with an evaluation report (verdict/findings) grounded in the project manager's triage goal, stating current and target maturity, before making changes.",
+        "The upgrade proceeds coarse-to-fine: structural/priority problems (buried action list, six equal cards, oversized Gantt, five equal buttons) are addressed before reading hierarchy, visual language, and micro-detail.",
+        "The upgrade loop is bounded to at most four passes and shows per-pass reasoning about what changed and whether to descend a level or stop.",
+        "The response ends with a DESIGN.md containing YAML front matter with design tokens (at least colors with a primary, typography, and one of rounded/spacing/components) and following the token reference and section rules.",
+        "The DESIGN.md body includes ordered spec sections (e.g. Overview/Colors/Typography ... Do's and Don'ts) whose stated personality is derived from the product's task/audience/risk rather than a copied brand.",
+        "The response stays framework-agnostic and does not produce a complete page implementation or invent a scale the design never used."
+      ]
+    }
+  ]
+}

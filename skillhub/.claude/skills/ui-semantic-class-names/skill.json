@@ -1,0 +1,24 @@
+{
+  "id": "ui-semantic-class-names",
+  "name": "UI Semantic Class Names",
+  "version": "0.1.0",
+  "author": "Yang Dong",
+  "summary": {
+    "en": "Add business-semantic class names to UI elements in Tailwind-heavy React/frontend code so markup keeps its layout and business meaning and stays easy to locate, read, and maintain.",
+    "zh": "在前端 React/Tailwind 页面元素的 className 首位补充与样式无关、表意的语义 class name（区域前缀分组命名），恢复 UI 元素的业务/布局语义，便于定位、阅读与维护。"
+  },
+  "tags": [
+    "ui",
+    "gdt"
+  ],
+  "risk_flags": {
+    "runs_scripts": false,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-07-08",
+  "updated_at": "2026-07-08"
+}

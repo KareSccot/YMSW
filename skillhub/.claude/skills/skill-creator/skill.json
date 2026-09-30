@@ -1,0 +1,24 @@
+{
+  "id": "skill-creator",
+  "name": "Skill Creator",
+  "version": "1.0.0",
+  "author": "Anthropic",
+  "summary": {
+    "en": "Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a sk...",
+    "zh": "创建新技能、修改改进现有技能并衡量技能表现。当用户想从零创建技能、编辑或优化现有技能、运行评测来测试技……"
+  },
+  "tags": [
+    "tooling",
+    "testing"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": true
+  },
+  "created_at": "2026-04-21",
+  "updated_at": "2026-04-21"
+}

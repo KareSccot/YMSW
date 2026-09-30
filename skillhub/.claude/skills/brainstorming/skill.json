@@ -1,0 +1,24 @@
+{
+  "id": "brainstorming",
+  "name": "Brainstorming",
+  "version": "5.1.0",
+  "author": "obra/superpowers",
+  "summary": {
+    "en": "Socratic design exploration before implementation. Ask one question at a time, propose 2-3 approaches with trade-offs, present design in sections for validation, output spec document.",
+    "zh": "实现前的苏格拉底式设计探索。每次只问一个问题，提出 2-3 种带权衡的方案，分章节呈现设计以供确认，并输出规格文档。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:1_spec"
+  ],
+  "risk_flags": {
+    "runs_scripts": false,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-06"
+}

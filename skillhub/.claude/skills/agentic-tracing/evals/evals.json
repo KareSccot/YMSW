@@ -1,0 +1,47 @@
+{
+  "skill_name": "agentic-tracing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm starting a brand-new repo called FocalFlow and I'll be building most of it with AI agents. Please set up agentic tracing so important changes and decisions are recorded and the agents don't drift across sessions.",
+      "expected_output": "The skill runs init.sh only, installing docs/PRD.md, docs/design.md, docs/changes/changelog.md (header only), an empty docs/changes/ directory, AGENTS.md, .cursor/hooks.json, and .cursor/hooks/check-change-artifacts.sh. It does NOT create a .cursor/rules/*.mdc file, does NOT create any change directory (no 000-init), and does not gather requirements.",
+      "files": [],
+      "expectations": [
+        "docs/PRD.md and docs/design.md snapshot templates were created",
+        "docs/changes/changelog.md was created and AGENTS.md was created at the repo root",
+        ".cursor/hooks.json and .cursor/hooks/check-change-artifacts.sh were created",
+        "No .cursor/rules/ directory or .mdc rule file was created",
+        "No change directory was created under docs/changes/ (no 000-init or any NNN-* directory)",
+        "No separate ADR file or directory was created; the decision log lives inside docs/design.md",
+        "The agent did not start writing a PRD or gathering requirements; it stopped after installing the tracing spine"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We already have a running internal service. I want to install this agentic tracing setup on the existing repo so future agent changes stay recorded. Set it up.",
+      "expected_output": "The skill runs init.sh, installing the tracing spine (snapshots/changelog/AGENTS.md/hooks). It notes that the existing PRD.md/design.md snapshots should be back-filled with the current state as follow-up, but does not invent product content or create a change.",
+      "files": [],
+      "expectations": [
+        "The tracing spine (docs/PRD.md, docs/design.md, docs/changes/changelog.md, AGENTS.md, .cursor/hooks) was installed",
+        "No .cursor/rules/*.mdc file was created",
+        "No change directory was created under docs/changes/",
+        "The agent did not fabricate requirements content; PRD/design remain templates to be back-filled",
+        "No separate ADR store was created; decisions live in docs/design.md"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "My AI coding agents keep forgetting decisions we already made and re-litigating settled tradeoffs every session, and the product slowly drifts from what we wanted. This repo has no docs/ structure yet. Please set up agentic tracing to stop this.",
+      "expected_output": "The skill is recognized as the fix and runs init.sh, installing the living PRD/design snapshots (design.md holds the decision log), the changelog memory index, and an AGENTS.md that forces a context-bootstrap read before each change and traces only material changes. It does not create a change or gather requirements.",
+      "files": [],
+      "expectations": [
+        "The agentic-tracing skill was used (init.sh ran) rather than an ad-hoc notes file",
+        "docs/PRD.md and docs/design.md were created as living snapshot templates",
+        "docs/design.md contains a Decisions section serving as the single decision log (no separate ADR store)",
+        "docs/changes/changelog.md was created as the change/memory index",
+        "AGENTS.md instructs agents to read the snapshots before starting work and defines a materiality threshold (only significant changes are traced)",
+        "No .cursor/rules/*.mdc file was created and no change directory was created under docs/changes/"
+      ]
+    }
+  ]
+}

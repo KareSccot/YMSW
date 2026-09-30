@@ -1,0 +1,26 @@
+{
+  "id": "add-ad-sso",
+  "name": "Add AD SSO",
+  "version": "1.0.0",
+  "author": "Yang Dong",
+  "summary": {
+    "en": "Canonical pattern for adding Azure AD / Microsoft Entra ID single sign-on via OAuth2 Authorization Code flow plus an app-issued JWT session. Language-agnostic, with Python and TypeScript demos.",
+    "zh": "为应用添加 Azure AD / Microsoft Entra ID 单点登录的标准范式：基于 OAuth2 授权码流程并签发应用自有的 JWT 会话。与语言无关，附带 Python 和 TypeScript 示例。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:3_build",
+    "security",
+    "integration"
+  ],
+  "risk_flags": {
+    "runs_scripts": false,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-06-01",
+  "updated_at": "2026-06-01"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "systematic-debugging",
+  "name": "Systematic Debugging",
+  "version": "5.1.0",
+  "author": "obra/superpowers",
+  "summary": {
+    "en": "4-phase root cause debugging process. Iron law: no fixes without root cause investigation first. Phases: root cause investigation, pattern analysis, hypothesis testing, implementation.",
+    "zh": "四阶段根因调试流程。铁律：未完成根因调查前不得修复。阶段：根因调查、模式分析、假设验证、实施修复。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:3_build"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-06"
+}

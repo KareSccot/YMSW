@@ -1,0 +1,24 @@
+{
+  "id": "finishing-a-development-branch",
+  "name": "Finishing a Development Branch",
+  "version": "5.1.0",
+  "author": "obra/superpowers",
+  "summary": {
+    "en": "Guide completion of development work. Verify tests pass, detect environment, present structured options (merge/PR/keep/discard), execute chosen workflow, clean up.",
+    "zh": "指导开发工作的收尾。验证测试通过、检测环境、给出结构化选项（合并/PR/保留/丢弃），执行所选流程并清理。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:6_ship"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-06"
+}

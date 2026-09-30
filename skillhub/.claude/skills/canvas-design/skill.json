@@ -1,0 +1,23 @@
+{
+  "id": "canvas-design",
+  "name": "Canvas Design",
+  "version": "1.0.0",
+  "author": "Anthropic",
+  "summary": {
+    "en": "Create beautiful visual art in .png and .pdf documents using design philosophy. You should use this skill when the user asks to create a poster, piece of art, design, or other static piece. Create...",
+    "zh": "运用设计理念在 .png 和 .pdf 文档中创作精美视觉作品。当用户需要制作海报、艺术作品、设计稿或其他静态作品时使用本技能。创作原创视觉设计……"
+  },
+  "tags": [
+    "design"
+  ],
+  "risk_flags": {
+    "runs_scripts": false,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-04-21",
+  "updated_at": "2026-04-21"
+}

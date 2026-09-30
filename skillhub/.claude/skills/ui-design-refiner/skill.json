@@ -1,0 +1,25 @@
+{
+  "id": "ui-design-refiner",
+  "name": "UI Design Refiner",
+  "version": "0.1.0",
+  "author": "Yang Dong",
+  "summary": {
+    "en": "Judge, verify, and refine an existing UI up the maturity ladder (Level 1-5): sharpen its information hierarchy, interaction clarity, and design language. Not a from-scratch generator.",
+    "zh": "沿设计成熟度阶梯（Level 1 到 Level 5）对已有产品界面做判断、校验与精修：诊断信息层级、交互清晰度与设计语言，用克制且有依据的修改提升其成熟度。不负责从零开始的生成。"
+  },
+  "tags": [
+    "design",
+    "ui",
+    "phase:3_build"
+  ],
+  "risk_flags": {
+    "runs_scripts": false,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-07-17",
+  "updated_at": "2026-08-06"
+}

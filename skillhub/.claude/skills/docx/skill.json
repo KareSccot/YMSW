@@ -1,0 +1,24 @@
+{
+  "id": "docx",
+  "name": "DOCX",
+  "version": "1.0.0",
+  "author": "Anthropic",
+  "summary": {
+    "en": "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of 'Word doc', 'word document', '.docx', or requests to produ...",
+    "zh": "当用户需要创建、读取、编辑或处理 Word 文档（.docx 文件）时使用本技能。触发场景包括：提及 'Word doc'、'word document'、'.docx'，或要求生成……"
+  },
+  "tags": [
+    "documents",
+    "tooling"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": true
+  },
+  "created_at": "2026-04-21",
+  "updated_at": "2026-04-21"
+}

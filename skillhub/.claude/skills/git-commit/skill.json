@@ -1,0 +1,26 @@
+{
+  "id": "git-commit",
+  "name": "Git Commit",
+  "version": "1.0.0",
+  "author": "awesome-cursor-skills community",
+  "summary": {
+    "en": "Create git commits following Conventional Commits. Analyzes staged diffs, drafts structured messages, and retries on hook failures until the commit succeeds.",
+    "zh": "遵循 Conventional Commits 规范创建 Git 提交。分析暂存区差异、起草结构化提交信息，并在钩子失败时重试直至提交成功。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:5_review",
+    "tooling",
+    "workflow"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": false
+  },
+  "created_at": "2026-05-15",
+  "updated_at": "2026-05-15"
+}

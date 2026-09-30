@@ -1,0 +1,25 @@
+{
+  "id": "adding-e2e-tests",
+  "name": "Adding E2E Tests",
+  "version": "1.0.0",
+  "author": "awesome-cursor-skills community",
+  "summary": {
+    "en": "Set up Playwright end-to-end tests with config, page objects, example tests, and CI integration. Covers browser setup, test patterns, and debugging.",
+    "zh": "使用 Playwright 搭建端到端测试，包含配置、页面对象、示例测试和 CI 集成。涵盖浏览器设置、测试模式与调试。"
+  },
+  "tags": [
+    "agentic-sdlc",
+    "phase:4_test",
+    "testing"
+  ],
+  "risk_flags": {
+    "runs_scripts": true,
+    "sends_data": false,
+    "external_calls": false,
+    "reads_creds": false,
+    "auto_updates": false,
+    "external_deps": true
+  },
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-06"
+}
